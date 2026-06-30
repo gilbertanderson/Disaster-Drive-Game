@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 public class PlayerController : MonoBehaviour
 {
@@ -17,6 +18,15 @@ public class PlayerController : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        
+        movementInput = movementAction.ReadValue<Vector2>();
+    }
+
+    void FixedUpdate()
+    {
+        float horizontalInput = movementInput.x;
+        float verticalInput = movementInput.y;
+
+        Vector3 movement = new Vector3(horizontalInput, 0f, verticalInput);
+        playerRb.AddForce(movement * speed);
     }
 }
