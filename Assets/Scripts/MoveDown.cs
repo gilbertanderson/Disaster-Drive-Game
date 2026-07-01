@@ -85,9 +85,10 @@ public class MoveDown : MonoBehaviour
         targetPosition.z = Mathf.Clamp(targetPosition.z, minZ, maxZ);
         objectRb.MovePosition(targetPosition);
 
-        // Once the obstacle has travelled past the bottom edge, wrap it back to the top
+        // Once the obstacle has travelled past the bottom edge (off-screen behind the
+        // player), destroy it so the spawner keeps feeding a fresh flow of rocks.
         if (Vector3.Dot(objectRb.position, moveDirection) > bottomThreshold)
-            Respawn();
+            Destroy(gameObject);
     }
 
     // When the player vehicle hits this rock, hand it over to physics: shove it to
@@ -99,7 +100,10 @@ public class MoveDown : MonoBehaviour
             return;
 
         isKnockedAside = true;
-        objectRb.constraints = RigidbodyConstraints.FreezePositionY;  // Stay on the ground but allow it to tumble
+        // Keep rotation frozen so the rock slides off to the side like a shoved boulder
+        // instead of tumbling/spinning; only its position is driven by the shove below.
+        objectRb.constraints = RigidbodyConstraints.FreezeRotation
+                             | RigidbodyConstraints.FreezePositionY;
 
         // Push toward whichever side of the vehicle the rock is on, so it "falls" to
         // that side, while keeping its downward speed so it never simply stops.

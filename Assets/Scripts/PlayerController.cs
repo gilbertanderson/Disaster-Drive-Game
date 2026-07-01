@@ -15,6 +15,7 @@ public class PlayerController : MonoBehaviour
     public float wallPadding = 0.5f;          // Keeps the vehicle's body from clipping into a wall
 
     private Rigidbody playerRb;               // Cached Rigidbody for physics-based movement
+    private Collider playerCollider;          // Cached collider, used to keep the whole body inside the bounds
     private Vector2 movementInput;            // Latest input value read each frame
     private float wallMinZ = float.NegativeInfinity;  // Inner face of the low-Z wall (unbounded until found)
     private float wallMaxZ = float.PositiveInfinity;  // Inner face of the high-Z wall
@@ -23,6 +24,7 @@ public class PlayerController : MonoBehaviour
     void Start()
     {
         playerRb = GetComponent<Rigidbody>();
+        playerCollider = GetComponent<Collider>();                    // Used to keep the whole vehicle body inside the bounds
         playerRb.useGravity = false;                                 // Top-down game: no gravity, movement is script-driven
         playerRb.constraints = RigidbodyConstraints.FreezeRotation    // Keep the player upright
                              | RigidbodyConstraints.FreezePositionY;  // Lock to the ground plane (prevents jitter)
@@ -67,8 +69,11 @@ public class PlayerController : MonoBehaviour
         targetPosition.x = Mathf.Clamp(targetPosition.x, minX, maxX);
         targetPosition.z = Mathf.Clamp(targetPosition.z, minZ, maxZ);
 
-        playerRb.MovePosition(targetPosition);     // Move via physics so collisions are respected
-        playerRb.angularVelocity = Vector3.zero;   // Cancel any spin picked up from collisions
+        // Clear any velocity from rock impacts so collisions can't shove the vehicle out
+        // of bounds; the script's MovePosition is the only thing that moves it.
+        playerRb.linearVelocity = Vector3.zero;
+        playerRb.angularVelocity = Vector3.zero;
+        playerRb.MovePosition(targetPosition);     // Move via physics so collisions are still respected
     }
 
     // Recalculate the world-space limits that keep the player contrained on screen
@@ -87,16 +92,33 @@ public class PlayerController : MonoBehaviour
         Vector3 c01 = gameCamera.ViewportToWorldPoint(new Vector3(0f, 1f, planeDistance));
         Vector3 c11 = gameCamera.ViewportToWorldPoint(new Vector3(1f, 1f, planeDistance));
 
-        // Store padded min/max so the player stays just inside the visible edges
-        minX = Mathf.Min(Mathf.Min(c00.x, c10.x), Mathf.Min(c01.x, c11.x)) + boundaryPadding;
-        maxX = Mathf.Max(Mathf.Max(c00.x, c10.x), Mathf.Max(c01.x, c11.x)) - boundaryPadding;
-        minZ = Mathf.Min(Mathf.Min(c00.z, c10.z), Mathf.Min(c01.z, c11.z)) + boundaryPadding;
-        maxZ = Mathf.Max(Mathf.Max(c00.z, c10.z), Mathf.Max(c01.z, c11.z)) - boundaryPadding;
+        // Raw screen edges (where the vehicle's *centre* could go if it had no size).
+        float regionMinX = Mathf.Min(Mathf.Min(c00.x, c10.x), Mathf.Min(c01.x, c11.x));
+        float regionMaxX = Mathf.Max(Mathf.Max(c00.x, c10.x), Mathf.Max(c01.x, c11.x));
+        float regionMinZ = Mathf.Min(Mathf.Min(c00.z, c10.z), Mathf.Min(c01.z, c11.z));
+        float regionMaxZ = Mathf.Max(Mathf.Max(c00.z, c10.z), Mathf.Max(c01.z, c11.z));
 
-        // Keep the player between the side walls' inner faces (usually tighter than
-        // the screen edges) so it can't push through them.
-        minZ = Mathf.Max(minZ, wallMinZ);
-        maxZ = Mathf.Min(maxZ, wallMaxZ);
+        // The side walls are usually tighter than the screen edges, so honour them too.
+        regionMinZ = Mathf.Max(regionMinZ, wallMinZ);
+        regionMaxZ = Mathf.Min(regionMaxZ, wallMaxZ);
+
+        // Inset by the vehicle's own half-size (from its collider) plus a little padding,
+        // so the WHOLE body stays inside the walls/screen, not just its pivot point. The
+        // collider can be offset from the pivot, so measure each face separately.
+        Bounds b = playerCollider != null ? playerCollider.bounds : new Bounds(playerRb.position, Vector3.zero);
+        float halfLeftX = playerRb.position.x - b.min.x;   // pivot → −X face
+        float halfRightX = b.max.x - playerRb.position.x;  // pivot → +X face
+        float halfLeftZ = playerRb.position.z - b.min.z;   // pivot → −Z face
+        float halfRightZ = b.max.z - playerRb.position.z;  // pivot → +Z face
+
+        minX = regionMinX + halfLeftX + boundaryPadding;
+        maxX = regionMaxX - halfRightX - boundaryPadding;
+        minZ = regionMinZ + halfLeftZ + wallPadding;
+        maxZ = regionMaxZ - halfRightZ - wallPadding;
+
+        // If the vehicle is wider than the space, park it in the middle rather than flip the bounds.
+        if (minX > maxX) minX = maxX = 0.5f * (regionMinX + regionMaxX);
+        if (minZ > maxZ) minZ = maxZ = 0.5f * (regionMinZ + regionMaxZ);
     }
 
     // Scan the children of the "Walls" object and record the Z range between the two
@@ -120,8 +142,9 @@ public class PlayerController : MonoBehaviour
                 highZ = Mathf.Min(highZ, wall.position.z - halfDepth);
         }
 
-        wallMinZ = lowZ + wallPadding;
-        wallMaxZ = highZ - wallPadding;
+        // Store the raw inner faces; padding and the vehicle's half-size are applied in UpdateBounds.
+        wallMinZ = lowZ;
+        wallMaxZ = highZ;
     }
 
     private void OnCollisionEnter(Collision collision)
