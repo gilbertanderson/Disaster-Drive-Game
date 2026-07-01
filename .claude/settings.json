@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "mcp__unity-mcp__Unity_ManageEditor",
-      "mcp__unity-mcp__Unity_ManageGameObject"
+      "mcp__unity-mcp__Unity_ManageGameObject",
+      "mcp__unity-mcp__Unity_ManageScene"
     ]
   }
 }
