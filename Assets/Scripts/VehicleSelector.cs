@@ -48,5 +48,30 @@ public class VehicleSelector : MonoBehaviour
         for (int i = 0; i < vehicleVisuals.Length; i++)
             if (vehicleVisuals[i] != null)
                 vehicleVisuals[i].SetActive(i == index);
+
+        FitColliderToVisual();
+    }
+
+    // Size the hitbox to the visible car so rocks touch the model before they collide,
+    // instead of bouncing off the old cube-sized box ("invisible wall").
+    void FitColliderToVisual()
+    {
+        var box = GetComponent<BoxCollider>();
+        var visual = vehicleVisuals[index];
+        if (box == null || visual == null)
+            return;
+
+        var renderers = visual.GetComponentsInChildren<Renderer>(false);
+        if (renderers.Length == 0)
+            return;
+
+        Bounds b = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            b.Encapsulate(renderers[i].bounds);
+
+        // World-space bounds -> this object's local space (the vehicle never rotates)
+        Vector3 lossy = transform.lossyScale;
+        box.center = transform.InverseTransformPoint(b.center);
+        box.size = new Vector3(b.size.x / lossy.x, b.size.y / lossy.y, b.size.z / lossy.z) * 0.95f;
     }
 }
