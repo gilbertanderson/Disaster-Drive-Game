@@ -8,7 +8,6 @@ public class MoveDown : MonoBehaviour
     public float wrapMargin = 1.5f;   // How far past the screen edge before wrapping back to the top
     public string wallsParentName = "Walls";  // Parent object whose children are the side walls
     public float wallPadding = 0.5f;  // Keeps the rock's body from clipping into a wall
-    public float respawnDelay = 2.0f; // Seconds to wait after a player hit before the rock respawns
     public float knockAsideSpeed = 6.0f;  // Sideways shove given to the rock when the vehicle hits it
     [SerializeField] private AudioClip crushClip;   // Crushing boom played where the rock is destroyed
     [SerializeField] private float crushVolume = 0.7f;
@@ -111,28 +110,19 @@ public class MoveDown : MonoBehaviour
         // player), destroy it so the spawner keeps feeding a fresh flow of rocks.
         if (Vector3.Dot(objectRb.position, moveDirection) > bottomThreshold)
         {
-            if (crushClip != null)
-                AudioSource.PlayClipAtPoint(crushClip, objectRb.position, crushVolume);
-            if (destroyEffectPrefab != null)
-            {
-                GameObject fx = Instantiate(destroyEffectPrefab, objectRb.position, destroyEffectPrefab.transform.rotation);
-                Destroy(fx, 3f);
-            }
+            SpawnDestroyFx();
             Destroy(gameObject);
         }
     }
 
-    // When the player vehicle hits this rock, hand it over to physics: shove it to
-    // whichever side of the vehicle it sits on (keeping its downward drift) and let it
-    // tumble away rather than stopping. It respawns respawnDelay seconds later.
+    // When the player vehicle hits this rock, shove it aside for one tick so the impact
+    // still reads as physical, then destroy it shortly after (rather than respawning).
     private void OnCollisionEnter(Collision collision)
     {
         if (isKnockedAside || !collision.gameObject.CompareTag("Player"))
             return;
 
         isKnockedAside = true;
-        // Keep rotation frozen so the rock slides off to the side like a shoved boulder
-        // instead of tumbling/spinning; only its position is driven by the shove below.
         objectRb.constraints = RigidbodyConstraints.FreezeRotation
                              | RigidbodyConstraints.FreezePositionY;
 
@@ -141,19 +131,27 @@ public class MoveDown : MonoBehaviour
         float side = objectRb.position.z >= collision.transform.position.z ? 1f : -1f;
         objectRb.linearVelocity = moveDirection * speed + Vector3.forward * (side * knockAsideSpeed);
 
-        Invoke(nameof(Respawn), respawnDelay);
+        Invoke(nameof(DestroyRock), 0.01f);
     }
 
-    // Return the rock to its starting spot (in front of the finish line), restore its
-    // upright orientation and rail movement, and clear any momentum from the collision.
-    private void Respawn()
+    private void DestroyRock()
     {
-        isKnockedAside = false;
-        objectRb.constraints = RigidbodyConstraints.FreezeRotation      // Back on rails: no spin...
-                             | RigidbodyConstraints.FreezePositionY;     // ...and locked to the ground plane
-        objectRb.position = spawnPosition;
-        objectRb.rotation = spawnRotation;
-        objectRb.linearVelocity = Vector3.zero;
-        objectRb.angularVelocity = Vector3.zero;
+        SpawnDestroyFx();
+        Destroy(gameObject);
+    }
+
+    // Rubble burst + crush sound, scaled down to roughly this rock's own footprint so the
+    // effect doesn't dwarf a small rock (used both off-screen and on player-hit destruction).
+    private void SpawnDestroyFx()
+    {
+        if (crushClip != null)
+            AudioSource.PlayClipAtPoint(crushClip, objectRb.position, crushVolume);
+
+        if (destroyEffectPrefab != null)
+        {
+            GameObject fx = Instantiate(destroyEffectPrefab, objectRb.position, destroyEffectPrefab.transform.rotation);
+            fx.transform.localScale *= Mathf.Clamp(transform.localScale.x, 0.3f, 1f) * 0.35f;
+            Destroy(fx, 3f);
+        }
     }
 }
