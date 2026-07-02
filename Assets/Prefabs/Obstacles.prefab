@@ -163,6 +163,7 @@ MonoBehaviour:
   knockAsideSpeed: 6
   crushClip: {fileID: 8300000, guid: af2b012ecebc34a91b65a0351bd46cc7, type: 3}
   crushVolume: 0.7
+  destroyEffectPrefab: {fileID: 191186, guid: 079954accd64b32419ec069129c81273, type: 3}
 --- !u!1 &8406801169748051371
 GameObject:
   m_ObjectHideFlags: 0

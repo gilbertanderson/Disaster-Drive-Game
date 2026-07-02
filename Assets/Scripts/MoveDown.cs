@@ -12,6 +12,7 @@ public class MoveDown : MonoBehaviour
     public float knockAsideSpeed = 6.0f;  // Sideways shove given to the rock when the vehicle hits it
     [SerializeField] private AudioClip crushClip;   // Crushing boom played where the rock is destroyed
     [SerializeField] private float crushVolume = 0.7f;
+    [SerializeField] private GameObject destroyEffectPrefab;   // Rubble burst spawned where the rock is destroyed
 
     private Rigidbody objectRb;       // Cached Rigidbody used for physics-based movement
     private Vector3 moveDirection;    // World-space direction that reads as "down the screen"
@@ -112,6 +113,11 @@ public class MoveDown : MonoBehaviour
         {
             if (crushClip != null)
                 AudioSource.PlayClipAtPoint(crushClip, objectRb.position, crushVolume);
+            if (destroyEffectPrefab != null)
+            {
+                GameObject fx = Instantiate(destroyEffectPrefab, objectRb.position, destroyEffectPrefab.transform.rotation);
+                Destroy(fx, 3f);
+            }
             Destroy(gameObject);
         }
     }
