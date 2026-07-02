@@ -10,6 +10,8 @@ public class MoveDown : MonoBehaviour
     public float wallPadding = 0.5f;  // Keeps the rock's body from clipping into a wall
     public float respawnDelay = 2.0f; // Seconds to wait after a player hit before the rock respawns
     public float knockAsideSpeed = 6.0f;  // Sideways shove given to the rock when the vehicle hits it
+    [SerializeField] private AudioClip crushClip;   // Crushing boom played where the rock is destroyed
+    [SerializeField] private float crushVolume = 0.7f;
 
     private Rigidbody objectRb;       // Cached Rigidbody used for physics-based movement
     private Vector3 moveDirection;    // World-space direction that reads as "down the screen"
@@ -19,11 +21,13 @@ public class MoveDown : MonoBehaviour
     private float minZ = float.NegativeInfinity;  // Lower Z limit from the walls (unbounded if unassigned)
     private float maxZ = float.PositiveInfinity;  // Upper Z limit from the walls
     private bool isKnockedAside;      // While true, physics drives the rock instead of the scripted rail
+    private GameManager gameManager;  // Rocks only travel while the game is active
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
         objectRb = GetComponent<Rigidbody>();
+        gameManager = FindAnyObjectByType<GameManager>();
         objectRb.useGravity = false;                          // Movement is script-driven, not gravity
         objectRb.constraints = RigidbodyConstraints.FreezeRotation    // Don't spin on impact
                              | RigidbodyConstraints.FreezePositionY;  // Stay on the ground; a hit only shoves it sideways
@@ -74,10 +78,27 @@ public class MoveDown : MonoBehaviour
     // FixedUpdate is the correct place for Rigidbody physics work
     void FixedUpdate()
     {
-        // While being knocked aside, let physics carry the rock freely so the vehicle
-        // can shove it off to the side instead of it stopping dead on its scripted rail.
-        if (isKnockedAside)
+        // Hold still until the player presses DRIVE (and freeze again at game over).
+        if (gameManager != null && !gameManager.IsGameActive)
             return;
+
+        // While being knocked aside, let physics carry the rock freely so the vehicle
+        // can shove it off to the side instead of it stopping dead on its scripted rail —
+        // but still keep it inside the walls, the same lateral boundary the vehicle obeys.
+        if (isKnockedAside)
+        {
+            Vector3 knockedPos = objectRb.position;
+            float clampedZ = Mathf.Clamp(knockedPos.z, minZ, maxZ);
+            if (!Mathf.Approximately(knockedPos.z, clampedZ))
+            {
+                knockedPos.z = clampedZ;
+                objectRb.position = knockedPos;
+                Vector3 velocity = objectRb.linearVelocity;
+                velocity.z = 0f;                    // Stop pushing outward once the wall is reached
+                objectRb.linearVelocity = velocity;
+            }
+            return;
+        }
 
         // Move at a constant speed down the screen so collisions are respected,
         // then clamp Z so a sideways hit can't push the rock past the walls.
@@ -88,7 +109,11 @@ public class MoveDown : MonoBehaviour
         // Once the obstacle has travelled past the bottom edge (off-screen behind the
         // player), destroy it so the spawner keeps feeding a fresh flow of rocks.
         if (Vector3.Dot(objectRb.position, moveDirection) > bottomThreshold)
+        {
+            if (crushClip != null)
+                AudioSource.PlayClipAtPoint(crushClip, objectRb.position, crushVolume);
             Destroy(gameObject);
+        }
     }
 
     // When the player vehicle hits this rock, hand it over to physics: shove it to

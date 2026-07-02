@@ -3,7 +3,18 @@
     "allow": [
       "mcp__unity-mcp__Unity_ManageEditor",
       "mcp__unity-mcp__Unity_ManageGameObject",
-      "mcp__unity-mcp__Unity_ManageScene"
+      "mcp__unity-mcp__Unity_ManageScene",
+      "mcp__UnityMCP__read_console",
+      "mcp__UnityMCP__refresh_unity",
+      "mcp__UnityMCP__execute_code",
+      "mcp__UnityMCP__manage_editor",
+      "mcp__unity-mcp__Unity_GetConsoleLogs",
+      "mcp__unity-mcp__Unity_ReadConsole",
+      "mcp__unity-mcp__Unity_Camera_Capture",
+      "mcp__plugin_firebase_firebase__firebase_get_environment",
+      "mcp__plugin_firebase_firebase__firebase_get_sdk_config",
+      "mcp__claude_ai_Vercel__get_project",
+      "Bash(npx tsc --noEmit *)"
     ]
   }
 }

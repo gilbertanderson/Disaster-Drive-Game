@@ -16,6 +16,7 @@ public class PlayerController : MonoBehaviour
 
     private Rigidbody playerRb;               // Cached Rigidbody for physics-based movement
     private Collider playerCollider;          // Cached collider, used to keep the whole body inside the bounds
+    private GameManager gameManager;          // Notified when the vehicle hits a rock
     private Vector2 movementInput;            // Latest input value read each frame
     private float wallMinZ = float.NegativeInfinity;  // Inner face of the low-Z wall (unbounded until found)
     private float wallMaxZ = float.PositiveInfinity;  // Inner face of the high-Z wall
@@ -33,6 +34,8 @@ public class PlayerController : MonoBehaviour
         if (gameCamera == null)
             gameCamera = Camera.main;                                // Fall back to the main camera if none assigned
 
+        gameManager = FindAnyObjectByType<GameManager>();          // Reports rock hits so the timer takes a penalty
+
         FindWallBounds();                                            // Work out the Z limits from the side walls
         UpdateBounds();                                              // Calculate the initial playable area
     }
@@ -45,6 +48,10 @@ public class PlayerController : MonoBehaviour
 
     void FixedUpdate()
     {
+        // Hold still on the start screen; movement only begins once the Start button is pressed.
+        if (gameManager != null && !gameManager.IsGameActive)
+            return;
+
         float horizontalInput = movementInput.x;
         float verticalInput = movementInput.y;
 
@@ -149,17 +156,9 @@ public class PlayerController : MonoBehaviour
 
     private void OnCollisionEnter(Collision collision)
     {
-        // If the player hits a rock, log a message. In a real game, this is where
-        // you'd trigger a "game over" or "lose a life" event.
-        if (collision.gameObject.CompareTag("Obstacle"))
-            Debug.Log("Player hit an obstacle!");
-    }
-
-    private void OnTriggerEnter(Collider other)
-    {
-        // If the player enters a trigger zone (like a goal area), log a message.
-        // In a real game, this is where you'd trigger a "level complete" event.
-        if (other.CompareTag("Goal"))
-            Debug.Log("Player reached the goal!");
+        // Hitting a rock costs time: the GameManager docks the timer, plays the impact
+        // sound, and kicks up dust at the point of contact.
+        if (collision.gameObject.CompareTag("Obstacle") && gameManager != null)
+            gameManager.OnPlayerHit(collision.GetContact(0).point);
     }
 }
