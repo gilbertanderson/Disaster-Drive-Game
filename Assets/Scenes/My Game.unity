@@ -1027,6 +1027,7 @@ GameObject:
   - component: {fileID: 330585545}
   - component: {fileID: 330585544}
   - component: {fileID: 330585547}
+  - component: {fileID: 330585548}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -1152,6 +1153,20 @@ MonoBehaviour:
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
   m_Version: 2
+--- !u!114 &330585548
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 330585543}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ae42cc11f459493ea2632d119457112, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CameraShake
+  duration: 0.18
+  magnitude: 0.12
 --- !u!1 &363796384
 GameObject:
   m_ObjectHideFlags: 0
@@ -3251,6 +3266,7 @@ GameObject:
   - component: {fileID: 1051540885}
   - component: {fileID: 1051540884}
   - component: {fileID: 1051540883}
+  - component: {fileID: 1051540886}
   m_Layer: 0
   m_Name: Canvas
   m_TagString: Untagged
@@ -3346,6 +3362,18 @@ Canvas:
   m_SortingLayerID: 0
   m_SortingOrder: 0
   m_TargetDisplay: 0
+--- !u!114 &1051540886
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1051540881}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a151e77a5fbb9469497d784160916edc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::UIModernizer
 --- !u!1 &1074672524
 GameObject:
   m_ObjectHideFlags: 0
@@ -5706,6 +5734,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1693646379}
+  - component: {fileID: 1693646380}
   m_Layer: 0
   m_Name: Trees
   m_TagString: Untagged
@@ -5742,6 +5771,29 @@ Transform:
   - {fileID: 448486462}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1693646380
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1693646378}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e3749da69f7ef4e4e9cb3f47b9f3dc7d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TreeSpawnManager
+  treePrefabs:
+  - {fileID: 9115551874755484243, guid: f2adbb5fe84214e388523a7a50ae9b77, type: 3}
+  - {fileID: 1828234321042360824, guid: e7afb7353cc27449484ed3795e85f47a, type: 3}
+  grassScroller: {fileID: 1805648745}
+  spawnX: 12
+  targetTreeCount: 16
+  leftStripZ: {x: -16, y: -11}
+  rightStripZ: {x: 11, y: 16}
+  xJitter: {x: -3, y: 3}
+  rockReferenceHeight: 2.7
+  treeHeightMultiplier: {x: 1.3, y: 1.8}
 --- !u!1 &1737723078
 GameObject:
   m_ObjectHideFlags: 0

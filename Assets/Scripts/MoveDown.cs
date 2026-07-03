@@ -12,6 +12,10 @@ public class MoveDown : MonoBehaviour
     [SerializeField] private AudioClip crushClip;   // Crushing boom played where the rock is destroyed
     [SerializeField] private float crushVolume = 0.7f;
     [SerializeField] private GameObject destroyEffectPrefab;   // Rubble burst spawned where the rock is destroyed
+    [SerializeField] private float destroyFxScaleMultiplier = 0.22f;
+    [SerializeField] private float destroyFxCameraSafetyScale = 0.85f;
+    [SerializeField] private float destroyFxDownOffset = 0.2f;
+    [SerializeField] private float destroyFxCameraForwardOffset = 0.15f;
 
     private Rigidbody objectRb;       // Cached Rigidbody used for physics-based movement
     private Vector3 moveDirection;    // World-space direction that reads as "down the screen"
@@ -149,9 +153,19 @@ public class MoveDown : MonoBehaviour
 
         if (destroyEffectPrefab != null)
         {
-            GameObject fx = Instantiate(destroyEffectPrefab, objectRb.position, destroyEffectPrefab.transform.rotation);
-            fx.transform.localScale *= Mathf.Clamp(transform.localScale.x, 0.3f, 1f) * 0.35f;
-            Destroy(fx, 3f);
+            Vector3 camForward = gameCamera != null ? gameCamera.transform.forward : Vector3.forward;
+            camForward.y = 0f;
+            if (camForward.sqrMagnitude > 0.001f)
+                camForward.Normalize();
+
+            Vector3 fxPos = objectRb.position
+                + Vector3.down * destroyFxDownOffset
+                + camForward * destroyFxCameraForwardOffset;
+            GameObject fx = Instantiate(destroyEffectPrefab, fxPos, destroyEffectPrefab.transform.rotation);
+            float rockScaleFactor = Mathf.Clamp(transform.localScale.x, 0.3f, 1f);
+            float finalScale = rockScaleFactor * destroyFxScaleMultiplier * destroyFxCameraSafetyScale;
+            fx.transform.localScale *= finalScale;
+            Destroy(fx, 2.5f);
         }
     }
 }

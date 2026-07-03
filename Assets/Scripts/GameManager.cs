@@ -36,6 +36,7 @@ public class GameManager : MonoBehaviour
     [Header("Impact Feedback")]
     [SerializeField] private AudioClip impactClip;         // Honk played when the vehicle hits a rock
     [SerializeField] private GameObject dustEffectPrefab;  // Dust burst spawned at the point of impact
+    [SerializeField] private CameraShake cameraShake;
 
     [Header("Audio")]
     [SerializeField] private AudioSource musicSource;      // Looping background music
@@ -53,17 +54,24 @@ public class GameManager : MonoBehaviour
     private float timeRemaining;
     private float gameStartTime;   // Time.timeSinceLevelLoad when the Drive button was pressed
     private float nextRampTime;
+    private float displayedTimer;
     private AudioSource sfxSource;
     private PlayerController player;
     private SpawnManager spawnManager;
     private Color timerDefaultColor;
+    private Coroutine startPanelHideRoutine;
+    private Coroutine gameOverShowRoutine;
+    private Coroutine pausePanelRoutine;
 
     void Start()
     {
         timeRemaining = startTime;
+        displayedTimer = startTime;
         sfxSource = GetComponent<AudioSource>();
         player = FindAnyObjectByType<PlayerController>();
         spawnManager = FindAnyObjectByType<SpawnManager>();
+        if (cameraShake == null)
+            cameraShake = Camera.main != null ? Camera.main.GetComponent<CameraShake>() : null;
 
         if (startPanel != null) startPanel.SetActive(true);
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
@@ -93,6 +101,7 @@ public class GameManager : MonoBehaviour
             return;
 
         timeRemaining -= Time.deltaTime;
+        displayedTimer = Mathf.Lerp(displayedTimer, timeRemaining, Time.deltaTime * 8f);
         UpdateTimerDisplay();
 
         // Difficulty ramp: every rampInterval seconds the vehicle accelerates and the
@@ -117,7 +126,12 @@ public class GameManager : MonoBehaviour
         IsGameActive = true;
         gameStartTime = Time.timeSinceLevelLoad;
         nextRampTime = gameStartTime + rampInterval;
-        if (startPanel != null) startPanel.SetActive(false);
+        if (startPanel != null)
+        {
+            if (startPanelHideRoutine != null)
+                StopCoroutine(startPanelHideRoutine);
+            startPanelHideRoutine = StartCoroutine(UIPanelTransition.Hide(startPanel));
+        }
         if (musicSource != null) musicSource.volume = playMusicVolume;
     }
 
@@ -136,7 +150,13 @@ public class GameManager : MonoBehaviour
 
         IsPaused = !IsPaused;
         Time.timeScale = IsPaused ? 0f : 1f;
-        if (pausePanel != null) pausePanel.SetActive(IsPaused);
+        if (pausePanel != null)
+        {
+            if (pausePanelRoutine != null)
+                StopCoroutine(pausePanelRoutine);
+            pausePanelRoutine = StartCoroutine(
+                IsPaused ? UIPanelTransition.Show(pausePanel) : UIPanelTransition.Hide(pausePanel));
+        }
     }
 
     // Wired to the pause overlay's music button.
@@ -174,6 +194,9 @@ public class GameManager : MonoBehaviour
             Destroy(dust, 2f);   // Clean up so repeated hits can't pile up effects
         }
 
+        if (cameraShake != null)
+            cameraShake.Shake();
+
         StartCoroutine(PenaltyFeedback());
         UpdateTimerDisplay();
         if (timeRemaining <= 0f)
@@ -199,7 +222,7 @@ public class GameManager : MonoBehaviour
     void UpdateTimerDisplay()
     {
         if (timerText != null)
-            timerText.text = "Time: " + Mathf.CeilToInt(Mathf.Max(timeRemaining, 0f));
+            timerText.text = "Time: " + Mathf.CeilToInt(Mathf.Max(displayedTimer, 0f));
     }
 
     void UpdateMusicButtonLabel()
@@ -294,7 +317,12 @@ public class GameManager : MonoBehaviour
         }
 
         UpdateLeaderboardDisplay();
-        if (gameOverPanel != null) gameOverPanel.SetActive(true);
+        if (gameOverPanel != null)
+        {
+            if (gameOverShowRoutine != null)
+                StopCoroutine(gameOverShowRoutine);
+            gameOverShowRoutine = StartCoroutine(UIPanelTransition.Show(gameOverPanel));
+        }
         if (musicSource != null) musicSource.volume = menuMusicVolume;
         if (spawnManager != null) spawnManager.StopSpawning();
         if (player != null) player.enabled = false;   // Freeze the vehicle where it stands

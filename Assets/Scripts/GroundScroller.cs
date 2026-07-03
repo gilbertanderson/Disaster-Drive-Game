@@ -9,6 +9,8 @@ public class GroundScroller : MonoBehaviour
     [SerializeField] private Vector2 scrollDirection = new Vector2(0f, -1f); // UV-space direction that reads as "moving down the screen"
     [SerializeField] private float scrollSpeed = 0.25f;                      // UV units per second; higher = faster road
 
+    public float WorldSpeed => scrollSpeed;
+
     private Material groundMaterial;   // Runtime instance — the asset on disk is not modified
     private Vector2 offset;
     private GameManager gameManager;
