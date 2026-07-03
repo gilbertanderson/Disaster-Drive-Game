@@ -15,15 +15,18 @@ public class TreeSpawnManager : MonoBehaviour
     [SerializeField] private float rockReferenceHeight = 2.7f;
     [SerializeField] private Vector2 treeHeightMultiplier = new Vector2(1.3f, 1.8f);
     [SerializeField] private float wallPadding = 0.6f;
+    [SerializeField] private float spawnBackMargin = 2f;
 
     private Transform treeRoot;
     private GameManager gameManager;
+    private Camera gameCamera;
     private float wallInnerLowZ = -10f;
     private float wallInnerHighZ = 10f;
 
     void Start()
     {
         gameManager = FindAnyObjectByType<GameManager>();
+        gameCamera = Camera.main;
         if (grassScroller == null)
             grassScroller = GameObject.Find("Plane")?.GetComponent<GroundScroller>();
         FindWallRange();
@@ -36,7 +39,11 @@ public class TreeSpawnManager : MonoBehaviour
     {
         yield return new WaitUntil(() => gameManager == null || gameManager.IsGameActive);
         while (treeRoot.childCount < targetTreeCount)
-            SpawnTree(RandomStripZ(), Random.Range(spawnX + xJitter.x, spawnX + xJitter.y));
+        {
+            float z = RandomStripZ();
+            float x = Random.Range(GetMinSpawnX(), spawnX + xJitter.y);
+            SpawnTree(z, x);
+        }
     }
 
     public void OnTreeLeftScreen(TreeScroller tree)
@@ -69,8 +76,24 @@ public class TreeSpawnManager : MonoBehaviour
         TreeScroller scroller = tree.GetComponent<TreeScroller>();
         if (scroller == null)
             scroller = tree.AddComponent<TreeScroller>();
-        if (grassScroller != null)
-            scroller.speed = grassScroller.WorldSpeed;
+        scroller.Configure(grassScroller);
+    }
+
+    float GetMinSpawnX()
+    {
+        if (gameCamera == null)
+            return spawnX + xJitter.x - spawnBackMargin * 8f;
+
+        Vector3 moveDir = grassScroller != null ? grassScroller.WorldMoveDirection : Vector3.left;
+        float planeDistance = Mathf.Abs(treeRoot.position.y - gameCamera.transform.position.y);
+        Vector3 bottomWorld = gameCamera.ViewportToWorldPoint(new Vector3(0.5f, 0f, planeDistance));
+        float bottomAlongTravel = Vector3.Dot(bottomWorld, moveDir);
+        float spawnAlongTravel = Vector3.Dot(new Vector3(spawnX, 0f, 0f), moveDir);
+
+        // Convert travel-axis bounds back to world X for this game's mostly -X travel.
+        float minAlongTravel = Mathf.Min(bottomAlongTravel, spawnAlongTravel) - spawnBackMargin;
+        Vector3 minWorld = new Vector3(spawnX, 0f, 0f) + moveDir * (minAlongTravel - spawnAlongTravel);
+        return minWorld.x;
     }
 
     float RandomStripZ()
@@ -135,14 +158,12 @@ public class TreeSpawnManager : MonoBehaviour
         Vector3 p = tree.transform.position;
         if (p.z < 0f)
         {
-            // Left strip: keep the whole tree outside the left wall's inner face.
             float maxZ = wallInnerLowZ - wallPadding - halfDepth;
             p.z = Mathf.Min(p.z, maxZ);
             p.z = Mathf.Clamp(p.z, leftStripZ.x, leftStripZ.y);
         }
         else
         {
-            // Right strip: keep the whole tree outside the right wall's inner face.
             float minZ = wallInnerHighZ + wallPadding + halfDepth;
             p.z = Mathf.Max(p.z, minZ);
             p.z = Mathf.Clamp(p.z, rightStripZ.x, rightStripZ.y);

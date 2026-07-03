@@ -3,28 +3,35 @@ using UnityEngine;
 // Moves a decorative tree down-screen at the same world speed as the grass scroll.
 public class TreeScroller : MonoBehaviour
 {
-    public float speed = 2.5f;
     public Camera gameCamera;
     public float wrapMargin = 2f;
 
+    private GroundScroller grassScroller;
+    private TreeSpawnManager spawnManager;
+    private GameManager gameManager;
     private Vector3 moveDirection = Vector3.left;
     private float bottomThreshold;
-    private GameManager gameManager;
-    private TreeSpawnManager spawnManager;
+    private float speed = 2.5f;
+
+    public void Configure(GroundScroller scroller)
+    {
+        grassScroller = scroller;
+        RefreshMotion();
+    }
 
     void Start()
     {
         gameManager = FindAnyObjectByType<GameManager>();
         spawnManager = FindAnyObjectByType<TreeSpawnManager>();
 
+        if (grassScroller == null)
+            grassScroller = FindAnyObjectByType<GroundScroller>();
+
         if (gameCamera == null)
             gameCamera = Camera.main;
 
-        float planeDistance = gameCamera != null
-            ? Mathf.Abs(transform.position.y - gameCamera.transform.position.y)
-            : 10f;
-        Vector3 bottomWorld = gameCamera.ViewportToWorldPoint(new Vector3(0.5f, 0f, planeDistance));
-        bottomThreshold = bottomWorld.x - wrapMargin;
+        RefreshMotion();
+        UpdateBottomThreshold();
     }
 
     void Update()
@@ -32,14 +39,36 @@ public class TreeScroller : MonoBehaviour
         if (gameManager != null && (!gameManager.IsGameActive || gameManager.IsPaused))
             return;
 
+        if (grassScroller != null)
+            RefreshMotion();
+
         transform.position += speed * Time.deltaTime * moveDirection;
 
-        if (transform.position.x < bottomThreshold)
+        if (Vector3.Dot(transform.position, moveDirection) > bottomThreshold)
         {
             if (spawnManager != null)
                 spawnManager.OnTreeLeftScreen(this);
             else
                 Destroy(gameObject);
         }
+    }
+
+    void RefreshMotion()
+    {
+        if (grassScroller == null)
+            return;
+
+        moveDirection = grassScroller.WorldMoveDirection;
+        speed = grassScroller.WorldSpeed;
+    }
+
+    void UpdateBottomThreshold()
+    {
+        if (gameCamera == null)
+            return;
+
+        float planeDistance = Mathf.Abs(transform.position.y - gameCamera.transform.position.y);
+        Vector3 bottomWorld = gameCamera.ViewportToWorldPoint(new Vector3(0.5f, 0f, planeDistance));
+        bottomThreshold = Vector3.Dot(bottomWorld, moveDirection) + wrapMargin;
     }
 }
