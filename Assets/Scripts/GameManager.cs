@@ -65,6 +65,7 @@ public class GameManager : MonoBehaviour
 
     void Start()
     {
+        Time.timeScale = 1f;   // A previous session may have ended while paused (timeScale 0)
         timeRemaining = startTime;
         displayedTimer = startTime;
         sfxSource = GetComponent<AudioSource>();
