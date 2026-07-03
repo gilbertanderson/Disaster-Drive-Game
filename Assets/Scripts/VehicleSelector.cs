@@ -112,6 +112,8 @@ public class VehicleSelector : MonoBehaviour
             if (dirtEmitters[i] == null) continue;
             float side = i == 0 ? -1f : 1f;
             dirtEmitters[i].transform.localPosition = new Vector3(rearX, groundY, box.center.z + side * halfTrack);
+            // Spray down-screen (-X), matching road/grass scroll after Round 12 reversal.
+            dirtEmitters[i].transform.localRotation = Quaternion.LookRotation(Vector3.left, Vector3.up);
         }
     }
 }
