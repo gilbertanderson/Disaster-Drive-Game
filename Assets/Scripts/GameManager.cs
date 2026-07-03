@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -7,7 +8,9 @@ using UnityEngine.SceneManagement;
 public class GameManager : MonoBehaviour
 {
     private const string BestTimeKey = "BestTime";     // PlayerPrefs key for the longest-survival record
+    private const string LeaderboardPrefix = "Leaderboard";
     private const string MusicMutedKey = "MusicMuted"; // PlayerPrefs key for the music toggle
+    private const int LeaderboardSize = 5;
 
     [Header("Timer")]
     [SerializeField] private float startTime = 60f;   // Seconds on the clock at the start of a run
@@ -69,11 +72,7 @@ public class GameManager : MonoBehaviour
         if (penaltyPopupText != null) penaltyPopupText.gameObject.SetActive(false);
         if (timerText != null) timerDefaultColor = timerText.color;
 
-        if (bestTimeText != null)
-        {
-            float best = PlayerPrefs.GetFloat(BestTimeKey, 0f);
-            bestTimeText.text = best > 0f ? "Best Time: " + Mathf.FloorToInt(best) + "s" : "Best Time: —";
-        }
+        UpdateLeaderboardDisplay();
 
         if (musicSource != null)
         {
@@ -209,6 +208,64 @@ public class GameManager : MonoBehaviour
             musicButtonLabel.text = musicSource.mute ? "MUSIC: OFF" : "MUSIC: ON";
     }
 
+    void UpdateLeaderboardDisplay()
+    {
+        if (bestTimeText == null)
+            return;
+
+        var scores = LoadLeaderboard();
+        if (scores.Count == 0)
+        {
+            bestTimeText.text = "Best Times:\n—";
+            return;
+        }
+
+        var lines = new List<string> { "Best Times:" };
+        for (int i = 0; i < scores.Count; i++)
+            lines.Add((i + 1) + ". " + Mathf.FloorToInt(scores[i]) + "s");
+        bestTimeText.text = string.Join("\n", lines);
+    }
+
+    List<float> LoadLeaderboard()
+    {
+        var scores = new List<float>();
+        for (int i = 0; i < LeaderboardSize; i++)
+        {
+            float s = PlayerPrefs.GetFloat(LeaderboardPrefix + i, -1f);
+            if (s >= 0f) scores.Add(s);
+        }
+        if (scores.Count == 0)
+        {
+            float legacy = PlayerPrefs.GetFloat(BestTimeKey, 0f);
+            if (legacy > 0f) scores.Add(legacy);
+        }
+        scores.Sort((a, b) => b.CompareTo(a));
+        return scores;
+    }
+
+    int InsertScore(float survival)
+    {
+        var scores = LoadLeaderboard();
+        scores.Add(survival);
+        scores.Sort((a, b) => b.CompareTo(a));
+        if (scores.Count > LeaderboardSize)
+            scores.RemoveRange(LeaderboardSize, scores.Count - LeaderboardSize);
+
+        for (int i = 0; i < scores.Count; i++)
+            PlayerPrefs.SetFloat(LeaderboardPrefix + i, scores[i]);
+        for (int i = scores.Count; i < LeaderboardSize; i++)
+            PlayerPrefs.DeleteKey(LeaderboardPrefix + i);
+
+        if (scores.Count > 0)
+            PlayerPrefs.SetFloat(BestTimeKey, scores[0]);
+        PlayerPrefs.Save();
+
+        for (int i = 0; i < scores.Count; i++)
+            if (Mathf.Approximately(scores[i], survival))
+                return i + 1;
+        return -1;
+    }
+
     void GameOver()
     {
         IsGameActive = false;
@@ -220,19 +277,23 @@ public class GameManager : MonoBehaviour
         if (runTimeText != null)
             runTimeText.text = "Time: " + Mathf.FloorToInt(survival) + "s";
 
-        bool isNewBest = survival > PlayerPrefs.GetFloat(BestTimeKey, 0f);
-        if (isNewBest)
+        int rank = InsertScore(survival);
+        bool madeTopFive = rank > 0;
+        if (newBestText != null)
         {
-            PlayerPrefs.SetFloat(BestTimeKey, survival);
-            PlayerPrefs.Save();
-            if (fireworksPrefab != null)
-            {
-                GameObject fx = Instantiate(fireworksPrefab, new Vector3(0f, 1f, 2.5f), fireworksPrefab.transform.rotation);
-                Destroy(fx, 6f);
-            }
+            newBestText.SetActive(madeTopFive);
+            var rankText = newBestText.GetComponent<TMP_Text>();
+            if (rankText != null)
+                rankText.text = rank == 1 ? "NEW BEST!" : "TOP 5! #" + rank;
         }
-        if (newBestText != null) newBestText.SetActive(isNewBest);
 
+        if (madeTopFive && rank == 1 && fireworksPrefab != null)
+        {
+            GameObject fx = Instantiate(fireworksPrefab, new Vector3(0f, 1f, 2.5f), fireworksPrefab.transform.rotation);
+            Destroy(fx, 6f);
+        }
+
+        UpdateLeaderboardDisplay();
         if (gameOverPanel != null) gameOverPanel.SetActive(true);
         if (musicSource != null) musicSource.volume = menuMusicVolume;
         if (spawnManager != null) spawnManager.StopSpawning();
