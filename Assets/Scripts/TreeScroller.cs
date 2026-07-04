@@ -6,7 +6,7 @@ public class TreeScroller : MonoBehaviour
     public Camera gameCamera;
     public float wrapMargin = 2f;
 
-    [SerializeField] private float treeSpeedMultiplier = 1.15f;
+    [SerializeField] private float treeSpeedMultiplier = 2.25f;
 
     private GroundScroller grassScroller;
     private TreeSpawnManager spawnManager;
@@ -40,6 +40,9 @@ public class TreeScroller : MonoBehaviour
     {
         if (gameManager != null && (!gameManager.IsGameActive || gameManager.IsPaused))
             return;
+
+        if (grassScroller != null)
+            RefreshMotion();
 
         transform.position += speed * Time.deltaTime * moveDirection;
 

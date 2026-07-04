@@ -139,8 +139,8 @@ public class VehicleSelector : MonoBehaviour
             if (dirtEmitters[i] == null) continue;
             float side = i == 0 ? -1f : 1f;
             dirtEmitters[i].transform.localPosition = new Vector3(rearX, groundY, box.center.z + side * halfTrack);
-            // Spray opposite the road movement so dirt trails behind the vehicle
-            dirtEmitters[i].transform.localRotation = Quaternion.LookRotation(-moveDirection, Vector3.up);
+            // Spray with the road movement so dirt trails behind the vehicle
+            dirtEmitters[i].transform.localRotation = Quaternion.LookRotation(moveDirection, Vector3.right);
         }
     }
 }
