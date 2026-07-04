@@ -6,6 +6,8 @@ public class TreeScroller : MonoBehaviour
     public Camera gameCamera;
     public float wrapMargin = 2f;
 
+    [SerializeField] private float treeSpeedMultiplier = 2.25f;
+
     private GroundScroller grassScroller;
     private TreeSpawnManager spawnManager;
     private GameManager gameManager;
@@ -59,7 +61,7 @@ public class TreeScroller : MonoBehaviour
             return;
 
         moveDirection = grassScroller.WorldMoveDirection;
-        speed = grassScroller.WorldSpeed;
+        speed = grassScroller.WorldSpeed * treeSpeedMultiplier;
     }
 
     void UpdateBottomThreshold()
@@ -67,8 +69,6 @@ public class TreeScroller : MonoBehaviour
         if (gameCamera == null)
             return;
 
-        float planeDistance = Mathf.Abs(transform.position.y - gameCamera.transform.position.y);
-        Vector3 bottomWorld = gameCamera.ViewportToWorldPoint(new Vector3(0.5f, 0f, planeDistance));
-        bottomThreshold = Vector3.Dot(bottomWorld, moveDirection) + wrapMargin;
+        bottomThreshold = ScreenEdgeUtility.BottomAlongTravel(gameCamera, transform.position.y, moveDirection) + wrapMargin;
     }
 }

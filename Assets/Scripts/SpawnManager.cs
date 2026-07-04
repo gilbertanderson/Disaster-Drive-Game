@@ -5,7 +5,7 @@ public class SpawnManager : MonoBehaviour
 {
     public GameObject[] obstacles;                // Obstacle prefab(s) to spawn
 
-    public float spawnX = 7.0f;                   // Travel-axis spawn line, just in front of the finish line (top of the field)
+    public float spawnX = 7.0f;                   // Travel-axis spawn line near the top of the field
     public float spawnY = 0.6f;                   // Height the rocks sit at above the ground
     public string wallsParentName = "Walls";      // Parent whose children mark the lateral (Z) bounds
     public float lateralPadding = 0.5f;           // Keep spawns a little inside the walls so rocks don't clip them
@@ -74,8 +74,8 @@ public class SpawnManager : MonoBehaviour
         if (FindObjectsByType<MoveDown>(FindObjectsInactive.Exclude).Length >= maxObstacles)
             return;
 
-        // Spawn on the fixed X line in front of the finish line, spread randomly across
-        // the field between the two side walls (Z). The rock then travels down the screen.
+        // Spawn on the fixed X line, spread randomly across the field between
+        // the two side walls (Z). The rock then travels down the screen.
         int obstacleIndex = Random.Range(0, obstacles.Length);
         if (obstacles[obstacleIndex] == null)
             return;

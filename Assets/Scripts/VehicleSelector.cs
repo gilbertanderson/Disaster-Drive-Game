@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 // Lets the player pick which vehicle model to drive (start screen arrows).
 // Each entry in vehicleVisuals is a child model of the PlayerVehicle; exactly
@@ -19,6 +20,17 @@ public class VehicleSelector : MonoBehaviour
         gameManager = FindAnyObjectByType<GameManager>();
         groundScroller = FindAnyObjectByType<GroundScroller>();
 
+        // Particle velocity must follow emitter rotation, which requires local simulation space.
+        if (dirtEmitters != null)
+        {
+            foreach (var emitter in dirtEmitters)
+            {
+                if (emitter == null) continue;
+                var main = emitter.main;
+                main.simulationSpace = ParticleSystemSimulationSpace.Local;
+            }
+        }
+
         if (vehicleVisuals == null || vehicleVisuals.Length == 0)
             return;
 
@@ -28,6 +40,16 @@ public class VehicleSelector : MonoBehaviour
 
     void Update()
     {
+        // On the start screen, A/D and the arrow keys cycle vehicles like the < > buttons.
+        // Gated to the start screen so leftover steering presses can't change the vehicle.
+        if (gameManager != null && gameManager.IsOnStartScreen && Keyboard.current != null)
+        {
+            if (Keyboard.current.aKey.wasPressedThisFrame || Keyboard.current.leftArrowKey.wasPressedThisFrame)
+                PreviousVehicle();
+            else if (Keyboard.current.dKey.wasPressedThisFrame || Keyboard.current.rightArrowKey.wasPressedThisFrame)
+                NextVehicle();
+        }
+
         // The dirt spray only runs while actually "driving" (mid-run, not paused).
         if (dirtEmitters == null)
             return;
@@ -117,16 +139,8 @@ public class VehicleSelector : MonoBehaviour
             if (dirtEmitters[i] == null) continue;
             float side = i == 0 ? -1f : 1f;
             dirtEmitters[i].transform.localPosition = new Vector3(rearX, groundY, box.center.z + side * halfTrack);
-            // Spray in the direction the road is moving
-            dirtEmitters[i].transform.localRotation = Quaternion.LookRotation(moveDirection, Vector3.up);
-
-            // Ensure particle system velocity follows emitter rotation by using local simulation space
-            var ps = dirtEmitters[i].GetComponent<ParticleSystem>();
-            if (ps != null)
-            {
-                var main = ps.main;
-                main.simulationSpace = ParticleSystemSimulationSpace.Local;
-            }
+            // Spray with the road movement so dirt trails behind the vehicle
+            dirtEmitters[i].transform.localRotation = Quaternion.LookRotation(moveDirection, Vector3.right);
         }
     }
 }
