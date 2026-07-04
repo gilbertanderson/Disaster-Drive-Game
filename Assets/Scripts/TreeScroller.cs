@@ -41,9 +41,6 @@ public class TreeScroller : MonoBehaviour
         if (gameManager != null && (!gameManager.IsGameActive || gameManager.IsPaused))
             return;
 
-        if (grassScroller != null)
-            RefreshMotion();
-
         transform.position += speed * Time.deltaTime * moveDirection;
 
         if (Vector3.Dot(transform.position, moveDirection) > bottomThreshold)
@@ -69,8 +66,6 @@ public class TreeScroller : MonoBehaviour
         if (gameCamera == null)
             return;
 
-        float planeDistance = Mathf.Abs(transform.position.y - gameCamera.transform.position.y);
-        Vector3 bottomWorld = gameCamera.ViewportToWorldPoint(new Vector3(0.5f, 0f, planeDistance));
-        bottomThreshold = Vector3.Dot(bottomWorld, moveDirection) + wrapMargin;
+        bottomThreshold = ScreenEdgeUtility.BottomAlongTravel(gameCamera, transform.position.y, moveDirection) + wrapMargin;
     }
 }

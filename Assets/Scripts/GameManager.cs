@@ -1,6 +1,5 @@
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -99,9 +98,13 @@ public class GameManager : MonoBehaviour
             cameraShake = Camera.main != null ? Camera.main.GetComponent<CameraShake>() : null;
 
         if (sunLight == null)
-            sunLight = FindObjectsOfType<Light>().FirstOrDefault(l => l.type == LightType.Directional);
+            sunLight = RenderSettings.sun;
 
-        ApplyLightingTransition(0f);
+        RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+        RenderSettings.fog = true;
+        RenderSettings.fogMode = FogMode.ExponentialSquared;
+        lightingElapsed = 0f;
+        UpdateLighting();
 
         if (startPanel != null) startPanel.SetActive(true);
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
@@ -135,9 +138,6 @@ public class GameManager : MonoBehaviour
         displayedTimer = Mathf.Lerp(displayedTimer, timeRemaining, Time.deltaTime * 8f);
         UpdateTimerDisplay();
 
-        // Lighting transition: gradually brighten from evening through sunset to daylight
-        // over the configured duration while the game is active.
-
         // Difficulty ramp: every rampInterval seconds the vehicle accelerates and the
         // rocks spawn sooner and travel faster, so dodging gets progressively harder.
         if (Time.timeSinceLevelLoad >= nextRampTime)
@@ -151,9 +151,11 @@ public class GameManager : MonoBehaviour
             GameOver();
     }
 
+    private const float SunsetPoint = 1f / 3f; // Fraction of the transition where evening gives way to sunset
+
     void UpdateLighting()
     {
-        if (sunLight == null)
+        if (sunLight == null || lightingElapsed >= lightingTransitionDuration)
             return;
 
         lightingElapsed = Mathf.Min(lightingElapsed + Time.deltaTime, lightingTransitionDuration);
@@ -165,9 +167,9 @@ public class GameManager : MonoBehaviour
         Color fogColor;
         float fogDensity;
 
-        if (t <= 0.3333333f)
+        if (t <= SunsetPoint)
         {
-            float phaseT = t / 0.3333333f;
+            float phaseT = t / SunsetPoint;
             lightColor = Color.Lerp(eveningLightColor, sunsetLightColor, phaseT);
             intensity = Mathf.Lerp(eveningLightIntensity, sunsetLightIntensity, phaseT);
             ambientColor = Color.Lerp(eveningAmbientColor, sunsetAmbientColor, phaseT);
@@ -176,7 +178,7 @@ public class GameManager : MonoBehaviour
         }
         else
         {
-            float phaseT = (t - 0.3333333f) / 0.6666667f;
+            float phaseT = (t - SunsetPoint) / (1f - SunsetPoint);
             lightColor = Color.Lerp(sunsetLightColor, daylightLightColor, phaseT);
             intensity = Mathf.Lerp(sunsetLightIntensity, daylightLightIntensity, phaseT);
             ambientColor = Color.Lerp(sunsetAmbientColor, daylightAmbientColor, phaseT);
@@ -186,18 +188,9 @@ public class GameManager : MonoBehaviour
 
         sunLight.color = lightColor;
         sunLight.intensity = intensity;
-        RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
         RenderSettings.ambientLight = ambientColor;
-        RenderSettings.fog = true;
-        RenderSettings.fogMode = FogMode.ExponentialSquared;
         RenderSettings.fogColor = fogColor;
         RenderSettings.fogDensity = fogDensity;
-    }
-
-    void ApplyLightingTransition(float elapsedSeconds)
-    {
-        lightingElapsed = Mathf.Clamp(elapsedSeconds, 0f, lightingTransitionDuration);
-        UpdateLighting();
     }
 
     // Wired to the start screen's Drive button.

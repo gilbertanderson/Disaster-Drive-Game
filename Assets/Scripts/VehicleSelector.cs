@@ -20,6 +20,17 @@ public class VehicleSelector : MonoBehaviour
         gameManager = FindAnyObjectByType<GameManager>();
         groundScroller = FindAnyObjectByType<GroundScroller>();
 
+        // Particle velocity must follow emitter rotation, which requires local simulation space.
+        if (dirtEmitters != null)
+        {
+            foreach (var emitter in dirtEmitters)
+            {
+                if (emitter == null) continue;
+                var main = emitter.main;
+                main.simulationSpace = ParticleSystemSimulationSpace.Local;
+            }
+        }
+
         if (vehicleVisuals == null || vehicleVisuals.Length == 0)
             return;
 
@@ -130,14 +141,6 @@ public class VehicleSelector : MonoBehaviour
             dirtEmitters[i].transform.localPosition = new Vector3(rearX, groundY, box.center.z + side * halfTrack);
             // Spray opposite the road movement so dirt trails behind the vehicle
             dirtEmitters[i].transform.localRotation = Quaternion.LookRotation(-moveDirection, Vector3.up);
-
-            // Ensure particle system velocity follows emitter rotation by using local simulation space
-            var ps = dirtEmitters[i].GetComponent<ParticleSystem>();
-            if (ps != null)
-            {
-                var main = ps.main;
-                main.simulationSpace = ParticleSystemSimulationSpace.Local;
-            }
         }
     }
 }

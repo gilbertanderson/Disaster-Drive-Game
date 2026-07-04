@@ -10,22 +10,22 @@ public class GroundScroller : MonoBehaviour
     [SerializeField] private float scrollSpeed = 5f;                         // UV units per second; higher = faster road; synchronized with worldScrollSpeed
     [SerializeField] private float worldScrollSpeed = 5f;                      // World units/sec for props (trees, rocks via MoveDown)
 
-    public float WorldSpeed { get; private set; }
-    public Vector3 WorldMoveDirection { get; private set; } = Vector3.left;
+    public float WorldSpeed => worldScrollSpeed;
+    public Vector3 WorldMoveDirection
+    {
+        get
+        {
+            Vector2 uvDir = scrollDirection.sqrMagnitude > 0.0001f
+                ? scrollDirection.normalized
+                : Vector2.left;
+            return new Vector3(uvDir.x, 0f, uvDir.y).normalized;
+        }
+    }
 
     private Material groundMaterial;   // Runtime instance — the asset on disk is not modified
     private Vector2 offset;
     private GameManager gameManager;
     private bool useBaseMap;           // URP Lit uses _BaseMap instead of _MainTex
-
-    void Awake()
-    {
-        Vector2 uvDir = scrollDirection.sqrMagnitude > 0.0001f
-            ? scrollDirection.normalized
-            : Vector2.left;
-        WorldMoveDirection = new Vector3(uvDir.x, 0f, uvDir.y).normalized;
-        WorldSpeed = worldScrollSpeed;
-    }
 
     void Start()
     {

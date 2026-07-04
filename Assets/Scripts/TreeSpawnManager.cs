@@ -38,10 +38,11 @@ public class TreeSpawnManager : MonoBehaviour
     IEnumerator PopulateWhenActive()
     {
         yield return new WaitUntil(() => gameManager == null || gameManager.IsGameActive);
+        float minX = GetMinSpawnX();
         while (treeRoot.childCount < targetTreeCount)
         {
             float z = RandomStripZ();
-            float x = Random.Range(GetMinSpawnX(), spawnX + xJitter.y);
+            float x = Random.Range(minX, spawnX + xJitter.y);
             SpawnTree(z, x);
         }
     }
@@ -85,9 +86,7 @@ public class TreeSpawnManager : MonoBehaviour
             return spawnX + xJitter.x - spawnBackMargin * 8f;
 
         Vector3 moveDir = grassScroller != null ? grassScroller.WorldMoveDirection : Vector3.left;
-        float planeDistance = Mathf.Abs(treeRoot.position.y - gameCamera.transform.position.y);
-        Vector3 bottomWorld = gameCamera.ViewportToWorldPoint(new Vector3(0.5f, 0f, planeDistance));
-        float bottomAlongTravel = Vector3.Dot(bottomWorld, moveDir);
+        float bottomAlongTravel = ScreenEdgeUtility.BottomAlongTravel(gameCamera, treeRoot.position.y, moveDir);
         float spawnAlongTravel = Vector3.Dot(new Vector3(spawnX, 0f, 0f), moveDir);
 
         // Convert travel-axis bounds back to world X for this game's mostly -X travel.

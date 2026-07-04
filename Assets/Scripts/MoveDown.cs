@@ -53,9 +53,7 @@ public class MoveDown : MonoBehaviour
         moveDirection = -screenUp;                            // Down the screen is the opposite of screen up
 
         // Project the bottom edge of the screen onto the travel axis so we know when we've gone off-screen.
-        float planeDistance = Mathf.Abs(transform.position.y - gameCamera.transform.position.y);
-        Vector3 bottomWorld = gameCamera.ViewportToWorldPoint(new Vector3(0.5f, 0f, planeDistance));
-        bottomThreshold = Vector3.Dot(bottomWorld, moveDirection) + wrapMargin;
+        bottomThreshold = ScreenEdgeUtility.BottomAlongTravel(gameCamera, transform.position.y, moveDirection) + wrapMargin;
 
         // Cache the Z range between the side walls' inner faces so a sideways
         // collision can't shove the rock out of the play field.
