@@ -7,9 +7,8 @@ using UnityEngine;
 public class GroundScroller : MonoBehaviour
 {
     [SerializeField] private Vector2 scrollDirection = new Vector2(0f, -1f); // UV-space direction that reads as "moving down the screen"
-    [SerializeField] private float scrollSpeed = 0.25f;                      // UV units per second; higher = faster road
-
-    private const float DefaultPlaneMeshSize = 10f;
+    [SerializeField] private float scrollSpeed = 5f;                         // UV units per second; higher = faster road; synchronized with worldScrollSpeed
+    [SerializeField] private float worldScrollSpeed = 5f;                      // World units/sec for props (trees, rocks via MoveDown)
 
     public float WorldSpeed { get; private set; }
     public Vector3 WorldMoveDirection { get; private set; } = Vector3.left;
@@ -25,12 +24,7 @@ public class GroundScroller : MonoBehaviour
             ? scrollDirection.normalized
             : Vector2.left;
         WorldMoveDirection = new Vector3(uvDir.x, 0f, uvDir.y).normalized;
-
-        Vector3 scale = transform.lossyScale;
-        float extentX = scale.x * DefaultPlaneMeshSize * Mathf.Abs(uvDir.x);
-        float extentZ = scale.z * DefaultPlaneMeshSize * Mathf.Abs(uvDir.y);
-        float scrollAxisExtent = Mathf.Max(extentX, extentZ, 0.01f);
-        WorldSpeed = scrollSpeed * scrollAxisExtent;
+        WorldSpeed = worldScrollSpeed;
     }
 
     void Start()
