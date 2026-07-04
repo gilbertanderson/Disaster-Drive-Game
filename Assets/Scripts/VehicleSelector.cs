@@ -12,10 +12,12 @@ public class VehicleSelector : MonoBehaviour
 
     private int index;
     private GameManager gameManager;
+    private GroundScroller groundScroller;
 
     void Awake()
     {
         gameManager = FindAnyObjectByType<GameManager>();
+        groundScroller = FindAnyObjectByType<GroundScroller>();
 
         if (vehicleVisuals == null || vehicleVisuals.Length == 0)
             return;
@@ -107,13 +109,16 @@ public class VehicleSelector : MonoBehaviour
         float groundY = box.center.y - box.size.y * 0.5f + 0.15f;
         float halfTrack = box.size.z * 0.3f;                                // roughly where the rear tires sit
 
+        // Get the actual road direction from GroundScroller, fall back to down-screen if not found
+        Vector3 moveDirection = groundScroller != null ? groundScroller.WorldMoveDirection : Vector3.left;
+
         for (int i = 0; i < dirtEmitters.Length; i++)
         {
             if (dirtEmitters[i] == null) continue;
             float side = i == 0 ? -1f : 1f;
             dirtEmitters[i].transform.localPosition = new Vector3(rearX, groundY, box.center.z + side * halfTrack);
-            // Spray down-screen (-X), matching road/grass scroll after Round 12 reversal.
-            dirtEmitters[i].transform.localRotation = Quaternion.LookRotation(Vector3.left, Vector3.up);
+            // Spray in the direction the road is moving
+            dirtEmitters[i].transform.localRotation = Quaternion.LookRotation(moveDirection, Vector3.up);
         }
     }
 }

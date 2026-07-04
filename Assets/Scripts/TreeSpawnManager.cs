@@ -158,13 +158,18 @@ public class TreeSpawnManager : MonoBehaviour
         Vector3 p = tree.transform.position;
         if (p.z < 0f)
         {
-            float maxZ = wallInnerLowZ - wallPadding - halfDepth;
+            // Mirror the right strip: keep trees on the outer grass band, away from the road edge.
+            float maxZ = Mathf.Min(
+                wallInnerLowZ - wallPadding - halfDepth,
+                leftStripZ.y - wallPadding - halfDepth);
             p.z = Mathf.Min(p.z, maxZ);
             p.z = Mathf.Clamp(p.z, leftStripZ.x, leftStripZ.y);
         }
         else
         {
-            float minZ = wallInnerHighZ + wallPadding + halfDepth;
+            float minZ = Mathf.Max(
+                wallInnerHighZ + wallPadding + halfDepth,
+                rightStripZ.x + wallPadding + halfDepth);
             p.z = Mathf.Max(p.z, minZ);
             p.z = Mathf.Clamp(p.z, rightStripZ.x, rightStripZ.y);
         }
