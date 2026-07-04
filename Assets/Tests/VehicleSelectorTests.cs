@@ -5,77 +5,79 @@ using UnityEngine;
 
 public class VehicleSelectorTests
 {
+    private GameObject groundGameObject;
     private GameObject selectorGameObject;
     private VehicleSelector selector;
-    private GameObject playerGameObject;
-    private PlayerController playerController;
     private GameObject emitterGameObject;
     private ParticleSystem emitter;
+    private GameObject vehicleVisual;
+    private GameObject vehicleVisual2;
 
     [SetUp]
     public void SetUp()
     {
-        playerGameObject = new GameObject("PlayerController");
-        playerController = playerGameObject.AddComponent<PlayerController>();
+        PlayerPrefs.DeleteAll();
 
-        var groundGameObject = new GameObject("GroundScroller");
+        groundGameObject = new GameObject("GroundScroller");
         groundGameObject.AddComponent<GroundScroller>();
 
         selectorGameObject = new GameObject("VehicleSelector");
         selector = selectorGameObject.AddComponent<VehicleSelector>();
+        selectorGameObject.AddComponent<BoxCollider>();
+
+        vehicleVisual = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        vehicleVisual.name = "VehicleVisual1";
+        vehicleVisual.transform.parent = selectorGameObject.transform;
+        vehicleVisual.transform.localPosition = Vector3.zero;
+
+        vehicleVisual2 = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        vehicleVisual2.name = "VehicleVisual2";
+        vehicleVisual2.transform.parent = selectorGameObject.transform;
+        vehicleVisual2.transform.localPosition = new Vector3(1.5f, 0f, 0f);
 
         emitterGameObject = new GameObject("DirtEmitter");
         emitterGameObject.transform.parent = selectorGameObject.transform;
         emitter = emitterGameObject.AddComponent<ParticleSystem>();
 
         SetPrivateField(selector, "dirtEmitters", new ParticleSystem[] { emitter });
-        SetPrivateField(selector, "vehicleVisuals", new GameObject[0]);
+        SetPrivateField(selector, "vehicleVisuals", new GameObject[] { vehicleVisual, vehicleVisual2 });
     }
 
     [TearDown]
     public void TearDown()
     {
+        PlayerPrefs.DeleteAll();
+        Object.DestroyImmediate(groundGameObject);
         Object.DestroyImmediate(selectorGameObject);
-        Object.DestroyImmediate(playerGameObject);
         Object.DestroyImmediate(emitterGameObject);
+        Object.DestroyImmediate(vehicleVisual);
+        Object.DestroyImmediate(vehicleVisual2);
     }
 
     [Test]
-    public void LeftInputPointsEmitterRightAxisLeft()
+    public void Awake_SetsParticleSimulationSpaceToLocal()
     {
-        SetCurrentMovementDirection(Vector3.left);
-        InvokeUpdate();
-
-        Assert.That(emitter.transform.right, Is.EqualTo(Vector3.left).Using(Vector3EqualityComparer.Instance));
+        InvokePrivateMethod("Awake");
+        Assert.That(emitter.main.simulationSpace, Is.EqualTo(ParticleSystemSimulationSpace.Local));
     }
 
     [Test]
-    public void RightInputPointsEmitterRightAxisRight()
+    public void Apply_PlacesEmitterBehindTheSelectedVehicleOnly()
     {
-        SetCurrentMovementDirection(Vector3.right);
-        InvokeUpdate();
+        PlayerPrefs.SetInt("VehicleIndex", 1);
+        InvokePrivateMethod("Awake");
 
-        Assert.That(emitter.transform.right, Is.EqualTo(Vector3.right).Using(Vector3EqualityComparer.Instance));
+        Assert.IsTrue(vehicleVisual2.activeSelf, "The second vehicle should be selected after Awake when VehicleIndex is 1.");
+        Assert.IsFalse(vehicleVisual.activeSelf, "The first vehicle should be inactive after Awake when VehicleIndex is 1.");
+        Assert.That(emitter.transform.localPosition.x, Is.LessThan(0f), "Emitter should sit behind the vehicle on the local X axis.");
     }
 
     [Test]
-    public void NoPlayerInputFallsBackToGroundMoveDirection()
+    public void Update_DoesNotChangeEmitterRotationFromDefault()
     {
-        SetCurrentMovementDirection(Vector3.zero);
-        InvokeUpdate();
-
-        var groundScroller = selectorGameObject.scene.GetRootGameObjects()[0].GetComponentInChildren<GroundScroller>();
-        Assert.IsNotNull(groundScroller, "GroundScroller should be present in the scene.");
-        Assert.That(emitter.transform.right, Is.EqualTo(groundScroller.WorldMoveDirection).Using(Vector3EqualityComparer.Instance));
-    }
-
-    private void SetCurrentMovementDirection(Vector3 direction)
-    {
-        var field = typeof(PlayerController).GetField("<CurrentMovementDirection>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.IsNotNull(field, "Could not find CurrentMovementDirection backing field.");
-        field.SetValue(playerController, direction);
-
-        SetPrivateField(selector, "playerController", playerController);
+        var initialRotation = emitter.transform.localRotation;
+        InvokePrivateMethod("Update");
+        Assert.That(emitter.transform.localRotation, Is.EqualTo(initialRotation));
     }
 
     private static void SetPrivateField(object target, string fieldName, object value)
@@ -85,11 +87,11 @@ public class VehicleSelectorTests
         field.SetValue(target, value);
     }
 
-    private void InvokeUpdate()
+    private void InvokePrivateMethod(string methodName)
     {
-        var updateMethod = typeof(VehicleSelector).GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-        Assert.IsNotNull(updateMethod, "Could not find Update() method on VehicleSelector.");
-        updateMethod.Invoke(selector, null);
+        var method = typeof(VehicleSelector).GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+        Assert.IsNotNull(method, $"Could not find method '{methodName}' on VehicleSelector.");
+        method.Invoke(selector, null);
     }
 }
 
