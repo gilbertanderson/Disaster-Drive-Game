@@ -10,6 +10,7 @@ public class VehicleSelector : MonoBehaviour
 
     [SerializeField] private GameObject[] vehicleVisuals;
     [SerializeField] private ParticleSystem[] dirtEmitters;   // Rear-tire dirt spray; repositioned to fit each vehicle
+    [SerializeField] private bool showEmitterOrientationGizmos = true;
 
     private int index;
     private GameManager gameManager;
@@ -139,8 +140,25 @@ public class VehicleSelector : MonoBehaviour
             if (dirtEmitters[i] == null) continue;
             float side = i == 0 ? -1f : 1f;
             dirtEmitters[i].transform.localPosition = new Vector3(rearX, groundY, box.center.z + side * halfTrack);
-            // Spray with the road movement so dirt trails behind the vehicle
-            dirtEmitters[i].transform.localRotation = Quaternion.LookRotation(moveDirection, Vector3.right);
+        }
+
+    }
+
+    void OnDrawGizmosSelected()
+    {
+        if (!showEmitterOrientationGizmos || dirtEmitters == null)
+            return;
+
+        Gizmos.color = Color.yellow;
+        for (int i = 0; i < dirtEmitters.Length; i++)
+        {
+            if (dirtEmitters[i] == null)
+                continue;
+
+            Vector3 origin = dirtEmitters[i].transform.position;
+            Vector3 direction = dirtEmitters[i].transform.right;
+            Gizmos.DrawLine(origin, origin + direction * 1.5f);
+            Gizmos.DrawSphere(origin + direction * 1.5f, 0.05f);
         }
     }
 }
