@@ -119,6 +119,14 @@ public class VehicleSelector : MonoBehaviour
             dirtEmitters[i].transform.localPosition = new Vector3(rearX, groundY, box.center.z + side * halfTrack);
             // Spray in the direction the road is moving
             dirtEmitters[i].transform.localRotation = Quaternion.LookRotation(moveDirection, Vector3.up);
+
+            // Ensure particle system velocity follows emitter rotation by using local simulation space
+            var ps = dirtEmitters[i].GetComponent<ParticleSystem>();
+            if (ps != null)
+            {
+                var main = ps.main;
+                main.simulationSpace = ParticleSystemSimulationSpace.Local;
+            }
         }
     }
 }
