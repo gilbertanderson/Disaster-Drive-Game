@@ -6,6 +6,8 @@ public class TreeScroller : MonoBehaviour
     public Camera gameCamera;
     public float wrapMargin = 2f;
 
+    [SerializeField] private float treeSpeedMultiplier = 1.15f;
+
     private GroundScroller grassScroller;
     private TreeSpawnManager spawnManager;
     private GameManager gameManager;
@@ -59,7 +61,7 @@ public class TreeScroller : MonoBehaviour
             return;
 
         moveDirection = grassScroller.WorldMoveDirection;
-        speed = grassScroller.WorldSpeed;
+        speed = grassScroller.WorldSpeed * treeSpeedMultiplier;
     }
 
     void UpdateBottomThreshold()

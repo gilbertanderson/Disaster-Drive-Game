@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -21,6 +22,25 @@ public class GameManager : MonoBehaviour
     [SerializeField] private float playerSpeedIncrease = 0.75f;    // Added to the vehicle's speed each bump
     [SerializeField] private float rockSpeedIncrease = 0.5f;       // Added to newly spawned rocks' speed each bump
     [SerializeField] private float spawnIntervalMultiplier = 0.9f; // Spawn interval shrinks by this factor each bump
+
+    [Header("Lighting Transition")]
+    [SerializeField] private Light sunLight;
+    [SerializeField] private float lightingTransitionDuration = 30f; // Seconds from evening to daylight
+    [SerializeField] private Color eveningLightColor = new Color(0.76f, 0.8f, 0.92f);
+    [SerializeField] private Color sunsetLightColor = new Color(0.92f, 0.78f, 0.65f);
+    [SerializeField] private Color daylightLightColor = new Color(1f, 0.98f, 0.92f);
+    [SerializeField] private float eveningLightIntensity = 0.55f;
+    [SerializeField] private float sunsetLightIntensity = 0.85f;
+    [SerializeField] private float daylightLightIntensity = 1.2f;
+    [SerializeField] private Color eveningAmbientColor = new Color(0.32f, 0.35f, 0.42f);
+    [SerializeField] private Color sunsetAmbientColor = new Color(0.45f, 0.4f, 0.35f);
+    [SerializeField] private Color daylightAmbientColor = new Color(0.65f, 0.68f, 0.72f);
+    [SerializeField] private Color eveningFogColor = new Color(0.52f, 0.56f, 0.62f);
+    [SerializeField] private Color sunsetFogColor = new Color(0.58f, 0.54f, 0.5f);
+    [SerializeField] private Color daylightFogColor = new Color(0.72f, 0.74f, 0.77f);
+    [SerializeField] private float eveningFogDensity = 0.012f;
+    [SerializeField] private float sunsetFogDensity = 0.008f;
+    [SerializeField] private float daylightFogDensity = 0.004f;
 
     [Header("UI")]
     [SerializeField] private TMP_Text timerText;
@@ -51,9 +71,13 @@ public class GameManager : MonoBehaviour
     public bool IsGameActive { get; private set; }
     public bool IsPaused { get; private set; }
 
+    // True only while the title screen is showing (not mid-run, not game over).
+    public bool IsOnStartScreen => !IsGameActive && startPanel != null && startPanel.activeInHierarchy;
+
     private float timeRemaining;
     private float gameStartTime;   // Time.timeSinceLevelLoad when the Drive button was pressed
     private float nextRampTime;
+    private float lightingElapsed;
     private float displayedTimer;
     private AudioSource sfxSource;
     private PlayerController player;
@@ -73,6 +97,11 @@ public class GameManager : MonoBehaviour
         spawnManager = FindAnyObjectByType<SpawnManager>();
         if (cameraShake == null)
             cameraShake = Camera.main != null ? Camera.main.GetComponent<CameraShake>() : null;
+
+        if (sunLight == null)
+            sunLight = FindObjectsOfType<Light>().FirstOrDefault(l => l.type == LightType.Directional);
+
+        ApplyLightingTransition(0f);
 
         if (startPanel != null) startPanel.SetActive(true);
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
@@ -101,9 +130,13 @@ public class GameManager : MonoBehaviour
         if (!IsGameActive || IsPaused)
             return;
 
+        UpdateLighting();
         timeRemaining -= Time.deltaTime;
         displayedTimer = Mathf.Lerp(displayedTimer, timeRemaining, Time.deltaTime * 8f);
         UpdateTimerDisplay();
+
+        // Lighting transition: gradually brighten from evening through sunset to daylight
+        // over the configured duration while the game is active.
 
         // Difficulty ramp: every rampInterval seconds the vehicle accelerates and the
         // rocks spawn sooner and travel faster, so dodging gets progressively harder.
@@ -116,6 +149,55 @@ public class GameManager : MonoBehaviour
 
         if (timeRemaining <= 0f)
             GameOver();
+    }
+
+    void UpdateLighting()
+    {
+        if (sunLight == null)
+            return;
+
+        lightingElapsed = Mathf.Min(lightingElapsed + Time.deltaTime, lightingTransitionDuration);
+        float t = lightingTransitionDuration > 0f ? lightingElapsed / lightingTransitionDuration : 1f;
+
+        Color lightColor;
+        float intensity;
+        Color ambientColor;
+        Color fogColor;
+        float fogDensity;
+
+        if (t <= 0.3333333f)
+        {
+            float phaseT = t / 0.3333333f;
+            lightColor = Color.Lerp(eveningLightColor, sunsetLightColor, phaseT);
+            intensity = Mathf.Lerp(eveningLightIntensity, sunsetLightIntensity, phaseT);
+            ambientColor = Color.Lerp(eveningAmbientColor, sunsetAmbientColor, phaseT);
+            fogColor = Color.Lerp(eveningFogColor, sunsetFogColor, phaseT);
+            fogDensity = Mathf.Lerp(eveningFogDensity, sunsetFogDensity, phaseT);
+        }
+        else
+        {
+            float phaseT = (t - 0.3333333f) / 0.6666667f;
+            lightColor = Color.Lerp(sunsetLightColor, daylightLightColor, phaseT);
+            intensity = Mathf.Lerp(sunsetLightIntensity, daylightLightIntensity, phaseT);
+            ambientColor = Color.Lerp(sunsetAmbientColor, daylightAmbientColor, phaseT);
+            fogColor = Color.Lerp(sunsetFogColor, daylightFogColor, phaseT);
+            fogDensity = Mathf.Lerp(sunsetFogDensity, daylightFogDensity, phaseT);
+        }
+
+        sunLight.color = lightColor;
+        sunLight.intensity = intensity;
+        RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+        RenderSettings.ambientLight = ambientColor;
+        RenderSettings.fog = true;
+        RenderSettings.fogMode = FogMode.ExponentialSquared;
+        RenderSettings.fogColor = fogColor;
+        RenderSettings.fogDensity = fogDensity;
+    }
+
+    void ApplyLightingTransition(float elapsedSeconds)
+    {
+        lightingElapsed = Mathf.Clamp(elapsedSeconds, 0f, lightingTransitionDuration);
+        UpdateLighting();
     }
 
     // Wired to the start screen's Drive button.
