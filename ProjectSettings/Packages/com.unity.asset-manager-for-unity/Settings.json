@@ -1,5 +1,11 @@
 {
     "m_Dictionary": {
-        "m_DictionaryValues": []
+        "m_DictionaryValues": [
+            {
+                "type": "Unity.AssetManager.Core.Editor.SavedAssetSearchFilterSettings, Unity.AssetManager.Core.Editor, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null",
+                "key": "AM4U.savedAssetSearchFilterSettings",
+                "value": "{\"m_Value\":{\"m_SavedAssetSearchFilters\":[{\"m_FilterId\":\"72307dd6-99de-4dc4-8781-285a7d8972bd\",\"m_OrganizationId\":\"2474252751584\",\"m_FilterName\":\"Dev\",\"m_AssetSearchFilter\":{\"Searches\":[],\"NameFilter\":{\"Included\":[],\"Excluded\":[],\"UseAndLogic\":true},\"DescriptionFilter\":{\"Included\":[],\"Excluded\":[],\"UseAndLogic\":true},\"AssetIds\":[],\"AssetVersions\":[],\"CreatedBy\":[],\"UpdatedBy\":[],\"Status\":[],\"Collection\":[\"\"],\"AssetTypeStrings\":[],\"AssetTypes\":[],\"Extensions\":[],\"TagsFilter\":{\"Included\":[],\"Excluded\":[],\"UseAndLogic\":true},\"Labels\":[],\"IsExactMatchSearch\":false,\"m_SerializableSearchFilterMetadata\":{\"textMedatatas\":[],\"booleanMedatatas\":[],\"numberMedatatas\":[],\"urlMedatatas\":[],\"timestampMedatatas\":[],\"userMedatatas\":[],\"singleSelectionMedatatas\":[],\"multiSelectionMedatatas\":[]},\"m_CreatedAtIncludedSerialized\":\"\",\"m_CreatedAtExcludedSerialized\":\"\",\"m_UpdatedAtIncludedSerialized\":\"\",\"m_UpdatedAtExcludedSerialized\":\"\"},\"m_SortingOptions\":{\"SortField\":0,\"SortingOrder\":0}}]}}"
+            }
+        ]
     }
 }
