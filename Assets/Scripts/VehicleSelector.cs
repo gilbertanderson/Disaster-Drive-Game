@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -10,6 +11,8 @@ public class VehicleSelector : MonoBehaviour
     private const string VehicleIndexKey = "VehicleIndex";
 
     [SerializeField] private GameObject[] vehicleVisuals;
+    [SerializeField] private string[] vehicleNames;           // Optional display names; falls back to visual object names
+    [SerializeField] private TMP_Text vehicleNameText;        // Shown on the start screen while cycling vehicles
     [SerializeField] private ParticleSystem[] dirtEmitters;   // Rear-tire dirt spray; repositioned to fit each vehicle
     [SerializeField] private bool showEmitterOrientationGizmos = true;
     [SerializeField] private float targetFootprint;  // 0 = auto median horizontal extent across all visuals
@@ -99,6 +102,74 @@ public class VehicleSelector : MonoBehaviour
                 vehicleVisuals[i].SetActive(i == index);
 
         FitColliderToVisual();
+        UpdateVehicleNameLabel();
+    }
+
+    void UpdateVehicleNameLabel()
+    {
+        if (vehicleNameText == null || vehicleVisuals == null || vehicleVisuals.Length == 0)
+            return;
+
+        vehicleNameText.text = GetVehicleDisplayName(index);
+    }
+
+    string GetVehicleDisplayName(int vehicleIndex)
+    {
+        if (vehicleNames != null && vehicleIndex >= 0 && vehicleIndex < vehicleNames.Length
+            && !string.IsNullOrWhiteSpace(vehicleNames[vehicleIndex]))
+            return LimitToWordCount(vehicleNames[vehicleIndex].Trim(), 2);
+
+        if (vehicleIndex < 0 || vehicleIndex >= vehicleVisuals.Length || vehicleVisuals[vehicleIndex] == null)
+            return "Vehicle";
+
+        return FormatVehicleName(vehicleVisuals[vehicleIndex].name);
+    }
+
+    public static string FormatVehicleName(string rawName)
+    {
+        if (string.IsNullOrWhiteSpace(rawName))
+            return "Vehicle";
+
+        string name = rawName;
+        if (name.StartsWith("Veh_"))
+            name = name.Substring(4);
+        else if (name.StartsWith("SM_Veh_"))
+            name = name.Substring(7);
+        else if (name.StartsWith("Prefab_"))
+            name = name.Substring(7);
+
+        name = name.Replace('_', ' ');
+        if (name.Contains("Convertable"))
+            name = name.Replace("Convertable", "Convertible");
+
+        if (name.EndsWith(" Z"))
+            name = name.Substring(0, name.Length - 2).TrimEnd();
+
+        if (name.Length > 3 && name.EndsWith(" 01"))
+            name = name.Substring(0, name.Length - 3);
+
+        name = TrimTrailingColorToken(name.Trim());
+        return LimitToWordCount(name, 2);
+    }
+
+    static string TrimTrailingColorToken(string name)
+    {
+        string[] colors = { "Red", "Green", "Blue", "Black", "White", "Yellow", "Orange", "Grey", "Gray" };
+        foreach (string color in colors)
+        {
+            if (name.EndsWith(" " + color, System.StringComparison.OrdinalIgnoreCase))
+                return name.Substring(0, name.Length - color.Length - 1).TrimEnd();
+        }
+        return name;
+    }
+
+    static string LimitToWordCount(string name, int maxWords)
+    {
+        string[] parts = name.Split((char[])null, System.StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length <= maxWords)
+            return name.Trim();
+
+        return string.Join(" ", parts, 0, maxWords);
     }
 
     // Drop null/missing entries left when a vehicle prefab is deleted but the array size is not compacted.

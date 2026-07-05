@@ -39,7 +39,8 @@ Movement is projected onto the camera's screen-right and screen-forward axes so
 controls match what the player sees. Direction is normalized so diagonals are
 not faster, and movement runs in `FixedUpdate` with `Rigidbody.MovePosition`.
 
-On the start screen the vehicle is stationary. After pressing **Drive**, the
+On the start screen the vehicle is stationary. A **vehicle name label** shows the
+current pick (short names, at most two words). After pressing **Drive**, the
 timer counts down. When time reaches zero, the vehicle enters an **exit drive**
 — it continues up-screen while the world keeps scrolling — before the game over
 panel appears.

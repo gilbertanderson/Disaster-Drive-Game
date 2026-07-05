@@ -1,5 +1,6 @@
 using System.Reflection;
 using NUnit.Framework;
+using TMPro;
 using UnityEngine;
 
 public class VehicleSelectorTests
@@ -113,6 +114,37 @@ public class VehicleSelectorTests
         Assert.That(compacted.Length, Is.EqualTo(2));
         Assert.That(compacted[0], Is.SameAs(vehicleVisual));
         Assert.That(compacted[1], Is.SameAs(vehicleVisual3));
+    }
+
+    [Test]
+    public void FormatVehicleName_StripsPrefixesAndLimitsToTwoWords()
+    {
+        Assert.That(VehicleSelector.FormatVehicleName("Veh_Ute_Red_Z"), Is.EqualTo("Ute"));
+        Assert.That(VehicleSelector.FormatVehicleName("Veh_Van_Green_Z"), Is.EqualTo("Van"));
+        Assert.That(VehicleSelector.FormatVehicleName("Veh_Armor_Car_01"), Is.EqualTo("Armor Car"));
+        Assert.That(VehicleSelector.FormatVehicleName("SM_Veh_Convertable_01"), Is.EqualTo("Convertible"));
+        Assert.That(VehicleSelector.FormatVehicleName("Prefab_K-131"), Is.EqualTo("K-131"));
+        Assert.That(VehicleSelector.FormatVehicleName("Off-road vehicle"), Is.EqualTo("Off-road vehicle"));
+    }
+
+    [Test]
+    public void Apply_UpdatesVehicleNameLabel()
+    {
+        vehicleVisual.name = "Veh_Armor_Car_01";
+        vehicleVisual2.name = "SM_Veh_Convertable_01";
+
+        var labelObject = new GameObject("VehicleNameLabel");
+        var label = labelObject.AddComponent<TextMeshProUGUI>();
+
+        SetPrivateField(selector, "vehicleNameText", label);
+        InvokePrivateMethod("Awake");
+
+        Assert.That(label.text, Is.EqualTo("Armor Car"));
+
+        selector.NextVehicle();
+        Assert.That(label.text, Is.EqualTo("Convertible"));
+
+        Object.DestroyImmediate(labelObject);
     }
 
     [Test]
