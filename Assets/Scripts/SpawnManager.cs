@@ -1,5 +1,9 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 public class SpawnManager : MonoBehaviour
 {
@@ -22,6 +26,22 @@ public class SpawnManager : MonoBehaviour
     [SerializeField] private Vector2 rockSpeedJitter = new Vector2(-1f, 2f);    // Random speed offset per rock
     [SerializeField] private float rockSpeedMultiplier = 2.25f;                  // Match decorative trees so rocks travel at the same world speed
 
+    private static readonly string[] KnownRockVisualPaths =
+    {
+        "Assets/MiscAssets/Objects/Obstacles/SM_Rock_Boulder_01.prefab",
+        "Assets/Enviornment/Rocks/Prefabs/SM_Rocks_01.prefab",
+        "Assets/Enviornment/Rocks/Prefabs/SM_Rocks_02.prefab",
+        "Assets/Enviornment/Rocks/Prefabs/SM_Rocks_03.prefab",
+        "Assets/Enviornment/Rocks/Prefabs/SM_Rocks_04.prefab",
+        "Assets/Enviornment/Rocks/Prefabs/SM_Rocks_05.prefab",
+        "Assets/Enviornment/Rocks/Prefabs/SM_Rocks_06.prefab",
+        "Assets/Enviornment/Rocks/Prefabs/SM_Rocks_07.prefab",
+        "Assets/Enviornment/Rocks/Prefabs/SM_Rocks_08.prefab",
+        "Assets/Enviornment/Rocks/Prefabs/SM_Rocks_09.prefab",
+        "Assets/Enviornment/Rocks/Prefabs/SM_Rocks_10.prefab",
+        "Assets/Enviornment/Rocks/Prefabs/SM_Rocks_11.prefab",
+    };
+
     private float currentInterval;                // Live spawn interval; shrinks as difficulty ramps
     private float rockSpeedBonus;                 // Added to each newly spawned rock's speed
     private bool isSpawning = true;
@@ -29,10 +49,22 @@ public class SpawnManager : MonoBehaviour
     private float maxZ = 10.0f;
     private GameManager gameManager;              // Rocks only flow while the game is active
     private GroundScroller groundScroller;        // Used to sync rock movement with the decorative trees
+    private GameObject[] validRockVisuals;        // Cached, spawn-safe prefab list
 
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
+    void OnValidate()
+    {
+#if UNITY_EDITOR
+        RepairRockVisualReferences();
+#endif
+    }
+
     void Start()
     {
+#if UNITY_EDITOR
+        RepairRockVisualReferences();
+#endif
+        validRockVisuals = BuildValidRockVisualList();
+
         currentInterval = obstacleSpawnInterval;
         gameManager = FindAnyObjectByType<GameManager>();
         groundScroller = FindAnyObjectByType<GroundScroller>();
@@ -82,7 +114,7 @@ public class SpawnManager : MonoBehaviour
         Vector3 spawnPos = new Vector3(spawnX, spawnY * sizeMultiplier, randomZ);
 
         GameObject rock;
-        if (rockVisuals != null && rockVisuals.Length > 0)
+        if (HasUsableRockVisuals())
         {
             if (obstacles[0] == null)
                 return;
@@ -114,11 +146,21 @@ public class SpawnManager : MonoBehaviour
         for (int i = rock.transform.childCount - 1; i >= 0; i--)
             Destroy(rock.transform.GetChild(i).gameObject);
 
-        GameObject visualPrefab = rockVisuals[Random.Range(0, rockVisuals.Length)];
+        GameObject visualPrefab = PickRandomRockVisual();
         if (visualPrefab == null)
             return;
 
-        GameObject visual = Instantiate(visualPrefab, rock.transform);
+        GameObject visual;
+        try
+        {
+            visual = Instantiate(visualPrefab, rock.transform);
+        }
+        catch (System.InvalidCastException ex)
+        {
+            Debug.LogWarning($"SpawnManager skipped invalid rock visual '{visualPrefab.name}': {ex.Message}", this);
+            return;
+        }
+
         visual.transform.localPosition = Vector3.zero;
         visual.transform.localRotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
 
@@ -128,6 +170,161 @@ public class SpawnManager : MonoBehaviour
         AlignVisualToGround(visual, rock);
         FitSphereColliderToVisual(rock, visual);
     }
+
+    bool HasUsableRockVisuals()
+    {
+        if (validRockVisuals == null)
+            validRockVisuals = BuildValidRockVisualList();
+        return validRockVisuals.Length > 0;
+    }
+
+    GameObject PickRandomRockVisual()
+    {
+        if (validRockVisuals == null || validRockVisuals.Length == 0)
+            validRockVisuals = BuildValidRockVisualList();
+        if (validRockVisuals.Length == 0)
+            return null;
+        return validRockVisuals[Random.Range(0, validRockVisuals.Length)];
+    }
+
+    GameObject[] BuildValidRockVisualList()
+    {
+        var valid = new List<GameObject>();
+        if (rockVisuals != null)
+        {
+            foreach (var entry in rockVisuals)
+            {
+                if (TryGetRockVisualPrefab(entry, out GameObject prefab) && !valid.Contains(prefab))
+                    valid.Add(prefab);
+            }
+        }
+
+        if (valid.Count == 0)
+        {
+            foreach (var path in KnownRockVisualPaths)
+            {
+                var loaded = LoadRockVisualAtPath(path);
+                if (loaded != null && !valid.Contains(loaded))
+                    valid.Add(loaded);
+            }
+        }
+
+        return valid.ToArray();
+    }
+
+    static bool TryGetRockVisualPrefab(Object entry, out GameObject prefab)
+    {
+        prefab = null;
+        if (entry == null)
+            return false;
+
+        if (entry is GameObject gameObject)
+        {
+            prefab = gameObject;
+            return true;
+        }
+
+#if UNITY_EDITOR
+        string path = AssetDatabase.GetAssetPath(entry);
+        if (!string.IsNullOrEmpty(path))
+        {
+            prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            return prefab != null;
+        }
+#endif
+        return false;
+    }
+
+    static GameObject LoadRockVisualAtPath(string path)
+    {
+#if UNITY_EDITOR
+        return AssetDatabase.LoadAssetAtPath<GameObject>(path);
+#else
+        return null;
+#endif
+    }
+
+#if UNITY_EDITOR
+    void RepairRockVisualReferences()
+    {
+        if (rockVisuals == null || rockVisuals.Length == 0)
+        {
+            rockVisuals = LoadAllKnownRockVisuals();
+            EditorUtility.SetDirty(this);
+            return;
+        }
+
+        var repaired = new List<GameObject>();
+        var serializedObject = new SerializedObject(this);
+        SerializedProperty arrayProperty = serializedObject.FindProperty("rockVisuals");
+        if (arrayProperty == null || !arrayProperty.isArray)
+            return;
+
+        bool changed = false;
+        for (int i = 0; i < arrayProperty.arraySize; i++)
+        {
+            SerializedProperty element = arrayProperty.GetArrayElementAtIndex(i);
+            Object current = element.objectReferenceValue;
+            if (TryGetRockVisualPrefab(current, out GameObject prefab))
+            {
+                if (!repaired.Contains(prefab))
+                    repaired.Add(prefab);
+                if (current != prefab)
+                {
+                    element.objectReferenceValue = prefab;
+                    changed = true;
+                }
+                continue;
+            }
+
+            changed = true;
+            if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(current, out string guid, out long _))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!string.IsNullOrEmpty(path))
+                {
+                    var loaded = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                    if (loaded != null && !repaired.Contains(loaded))
+                    {
+                        repaired.Add(loaded);
+                        element.objectReferenceValue = loaded;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        if (repaired.Count == 0)
+            repaired.AddRange(LoadAllKnownRockVisuals());
+
+        if (changed || repaired.Count != rockVisuals.Length)
+        {
+            rockVisuals = repaired.ToArray();
+            serializedObject.Update();
+            arrayProperty.arraySize = rockVisuals.Length;
+            for (int i = 0; i < rockVisuals.Length; i++)
+                arrayProperty.GetArrayElementAtIndex(i).objectReferenceValue = rockVisuals[i];
+            serializedObject.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(this);
+        }
+        else
+        {
+            rockVisuals = repaired.ToArray();
+        }
+    }
+
+    static GameObject[] LoadAllKnownRockVisuals()
+    {
+        var loaded = new List<GameObject>();
+        foreach (var path in KnownRockVisualPaths)
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            if (prefab != null && !loaded.Contains(prefab))
+                loaded.Add(prefab);
+        }
+        return loaded.ToArray();
+    }
+#endif
 
     void AlignVisualToGround(GameObject visual, GameObject rock)
     {
