@@ -19,6 +19,7 @@ public class SpawnManager : MonoBehaviour
     [Header("Rock Variety")]
     [SerializeField] private Vector2 rockScaleRange = new Vector2(0.7f, 1.4f);  // Random size multiplier per rock
     [SerializeField] private Vector2 rockSpeedJitter = new Vector2(-1f, 2f);    // Random speed offset per rock
+    [SerializeField] private float rockSpeedMultiplier = 2.25f;                  // Match decorative trees so rocks travel at the same world speed
 
     private float currentInterval;                // Live spawn interval; shrinks as difficulty ramps
     private float rockSpeedBonus;                 // Added to each newly spawned rock's speed
@@ -26,12 +27,14 @@ public class SpawnManager : MonoBehaviour
     private float minZ = -5.0f;                   // Lateral spawn range between the walls (recomputed from the walls in Start)
     private float maxZ = 10.0f;
     private GameManager gameManager;              // Rocks only flow while the game is active
+    private GroundScroller groundScroller;        // Used to sync rock movement with the decorative trees
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
         currentInterval = obstacleSpawnInterval;
         gameManager = FindAnyObjectByType<GameManager>();
+        groundScroller = FindAnyObjectByType<GroundScroller>();
         FindWallRange();                          // Work out the lateral spawn range from the side walls
         StartCoroutine(SpawnLoop());
     }
@@ -90,7 +93,12 @@ public class SpawnManager : MonoBehaviour
 
         MoveDown mover = rock.GetComponentInChildren<MoveDown>();
         if (mover != null)
-            mover.speed = Mathf.Max(1.5f, mover.speed + rockSpeedBonus + Random.Range(rockSpeedJitter.x, rockSpeedJitter.y));
+        {
+            float baseRockSpeed = groundScroller != null
+                ? groundScroller.WorldSpeed * rockSpeedMultiplier
+                : mover.speed;
+            mover.speed = Mathf.Max(1.5f, baseRockSpeed + rockSpeedBonus + Random.Range(rockSpeedJitter.x, rockSpeedJitter.y));
+        }
     }
 
     // Read the side walls so spawns land between them (matches the clamp the rocks use).

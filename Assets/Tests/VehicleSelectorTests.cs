@@ -101,7 +101,7 @@ public class VehicleSelectorTests
         SetPrivateField(selector, "dirtEmitters", new ParticleSystem[] { leftEmitter, rightEmitter });
         InvokePrivateMethod("Awake");
 
-        Assert.That(Vector3.Dot(leftEmitter.transform.right, rightEmitter.transform.right), Is.LessThan(0f));
+        Assert.That(Vector3.Dot(leftEmitter.transform.forward, rightEmitter.transform.forward), Is.LessThan(0f));
     }
 
     private static void SetPrivateField(object target, string fieldName, object value)

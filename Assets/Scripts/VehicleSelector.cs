@@ -148,7 +148,7 @@ public class VehicleSelector : MonoBehaviour
                 emitterRotation = Quaternion.FromToRotation(Vector3.right, moveDirection);
 
             if (side < 0f)
-                emitterRotation *= Quaternion.Euler(0f, 180f, 0f);
+                emitterRotation *= Quaternion.Euler(180f, 0f, 0f);
 
             dirtEmitters[i].transform.localRotation = emitterRotation;
         }
