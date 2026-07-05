@@ -1,29 +1,9 @@
 fileFormatVersion: 2
-guid: 211816772107231429219f9256f01d23
+guid: 7799a29fdee308341b16b65d8a002357
 ModelImporter:
-  serializedVersion: 22200
+  serializedVersion: 24200
   internalIDToNameTable: []
-  externalObjects:
-  - first:
-      type: UnityEngine:Material
-      assembly: UnityEngine.CoreModule
-      name: Texture_CarAccessory
-    second: {fileID: 2100000, guid: 5d1cb8e2b7a4fa84b8fadda573ac6d51, type: 2}
-  - first:
-      type: UnityEngine:Material
-      assembly: UnityEngine.CoreModule
-      name: Texture_CarBody
-    second: {fileID: 2100000, guid: a6d99905439ad8844992dedc85b70ec8, type: 2}
-  - first:
-      type: UnityEngine:Material
-      assembly: UnityEngine.CoreModule
-      name: Texture_Glass
-    second: {fileID: 2100000, guid: 53d9d2db703bc4c4282206f56ad00976, type: 2}
-  - first:
-      type: UnityEngine:Material
-      assembly: UnityEngine.CoreModule
-      name: Texture_Inside
-    second: {fileID: 2100000, guid: 092711fca89ca064fb310825da50d89d, type: 2}
+  externalObjects: {}
   materials:
     materialImportMode: 2
     materialName: 0
@@ -36,8 +16,6 @@ ModelImporter:
     optimizeGameObjects: 0
     removeConstantScaleCurves: 0
     motionNodeName: 
-    rigImportErrors: 
-    rigImportWarnings: 
     animationImportErrors: 
     animationImportWarnings: 
     animationRetargetingWarnings: 
@@ -78,6 +56,9 @@ ModelImporter:
     maxBonesPerVertex: 4
     minBoneWeight: 0.001
     optimizeBones: 1
+    generateMeshLods: 0
+    meshLodGenerationFlags: 0
+    maximumMeshLod: -1
     meshOptimizationFlags: -1
     indexFormat: 0
     secondaryUVAngleDistortion: 8
@@ -127,10 +108,3 @@ ModelImporter:
   userData: 
   assetBundleName: 
   assetBundleVariant: 
-AssetOrigin:
-  serializedVersion: 1
-  productId: 330882
-  packageName: Korean Army Light Tactical Vehicle
-  packageVersion: 1.0
-  assetPath: Assets/gr.desert/Korean Army Light Tactical Vehicle/Model/Mesh_K151_WoodLand01.fbx
-  uploadId: 786152

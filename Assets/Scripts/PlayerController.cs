@@ -13,13 +13,15 @@ public class PlayerController : MonoBehaviour
     public float boundaryPadding = 0.5f;      // Inset from the screen edges so the player stays fully visible
     public string wallsParentName = "Walls";  // Parent object whose children are the side walls
     public float wallPadding = 0.5f;          // Keeps the vehicle's body from clipping into a wall
-    public float movementDeadzone = 0.25f;    // Ignore tiny input noise for dirt emitter direction
+    [SerializeField] private float exitSpeedMultiplier = 1.5f;
+    [SerializeField] private float exitOffScreenMargin = 0.5f;
 
     private Rigidbody playerRb;               // Cached Rigidbody for physics-based movement
     private Collider playerCollider;          // Cached collider, used to keep the whole body inside the bounds
     private GameManager gameManager;          // Notified when the vehicle hits a rock
     private Vector2 movementInput;            // Latest input value read each frame
-    public Vector3 CurrentMovementDirection { get; private set; }
+    private bool isExiting;
+    private Vector3 exitDirection;
     private float wallMinZ = float.NegativeInfinity;  // Inner face of the low-Z wall (unbounded until found)
     private float wallMaxZ = float.PositiveInfinity;  // Inner face of the high-Z wall
 
@@ -50,31 +52,26 @@ public class PlayerController : MonoBehaviour
 
     void FixedUpdate()
     {
-        // Hold still on the start screen; movement only begins once the Start button is pressed.
-        if (gameManager != null && !gameManager.IsGameActive)
+        if (isExiting)
         {
-            CurrentMovementDirection = Vector3.zero;
+            ExitDriveTick();
             return;
         }
+
+        // Hold still on the start screen; movement only begins once the Start button is pressed.
+        if (gameManager != null && !gameManager.IsGameActive)
+            return;
 
         float horizontalInput = movementInput.x;
         float verticalInput = movementInput.y;
 
-        // Derive movement axes from the camera so controls always match the screen,
-        // no matter how the camera is rotated.
-        Vector3 screenRight = gameCamera.transform.right;          // Maps to left/right input
-        Vector3 screenForward = gameCamera.transform.forward;      // Maps to up/down input
-        screenForward.y = 0f;
-        if (screenForward.sqrMagnitude < 0.001f)                   // Top-down camera looks straight down
-            screenForward = gameCamera.transform.up;               // ...so "screen up" lives on the camera's up axis
+        Vector3 screenRight = gameCamera.transform.right;
         screenRight.y = 0f;
-        screenForward.y = 0f;
         screenRight.Normalize();
-        screenForward.Normalize();
+        Vector3 screenForward = ComputeScreenForward();
 
         // Build a normalized direction so diagonal movement isn't faster
         Vector3 movementDirection = (screenRight * horizontalInput + screenForward * verticalInput).normalized;
-        CurrentMovementDirection = movementDirection.magnitude > movementDeadzone ? movementDirection : Vector3.zero;
         Vector3 movement = movementDirection * speed * Time.fixedDeltaTime;
 
         // Apply movement, then clamp the result inside the playable area
@@ -87,6 +84,52 @@ public class PlayerController : MonoBehaviour
         playerRb.linearVelocity = Vector3.zero;
         playerRb.angularVelocity = Vector3.zero;
         playerRb.MovePosition(targetPosition);     // Move via physics so collisions are still respected
+    }
+
+    public void BeginExitDrive()
+    {
+        isExiting = true;
+        exitDirection = ComputeScreenForward();
+    }
+
+    Vector3 ComputeScreenForward()
+    {
+        Vector3 screenForward = gameCamera.transform.forward;
+        screenForward.y = 0f;
+        if (screenForward.sqrMagnitude < 0.001f)                   // Top-down camera looks straight down
+            screenForward = gameCamera.transform.up;               // ...so "screen up" lives on the camera's up axis
+        screenForward.y = 0f;
+        screenForward.Normalize();
+        return screenForward;
+    }
+
+    void ExitDriveTick()
+    {
+        if (gameCamera == null)
+        {
+            isExiting = false;
+            if (gameManager != null)
+                gameManager.OnVehicleExitComplete();
+            else
+                enabled = false;
+            return;
+        }
+
+        playerRb.linearVelocity = Vector3.zero;
+        playerRb.angularVelocity = Vector3.zero;
+        playerRb.MovePosition(playerRb.position + exitDirection * (speed * exitSpeedMultiplier) * Time.fixedDeltaTime);
+
+        Bounds b = playerCollider != null ? playerCollider.bounds : new Bounds(playerRb.position, Vector3.zero);
+        float halfAlong = Mathf.Abs(exitDirection.x) * b.extents.x + Mathf.Abs(exitDirection.z) * b.extents.z;
+        float threshold = ScreenEdgeUtility.TopAlongTravel(gameCamera, transform.position.y, exitDirection) + exitOffScreenMargin;
+        if (Vector3.Dot(b.center, exitDirection) - halfAlong > threshold)
+        {
+            isExiting = false;
+            if (gameManager != null)
+                gameManager.OnVehicleExitComplete();
+            else
+                enabled = false;
+        }
     }
 
     // Recalculate the world-space limits that keep the player contrained on screen

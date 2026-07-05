@@ -38,7 +38,7 @@ public class TreeScroller : MonoBehaviour
 
     void Update()
     {
-        if (gameManager != null && (!gameManager.IsGameActive || gameManager.IsPaused))
+        if (gameManager != null && !gameManager.IsWorldAnimating)
             return;
 
         if (grassScroller != null)

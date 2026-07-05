@@ -3,7 +3,7 @@ using UnityEngine;
 
 public class SpawnManager : MonoBehaviour
 {
-    public GameObject[] obstacles;                // Obstacle prefab(s) to spawn
+    public GameObject[] obstacles;                // Gameplay shell prefab(s); rockVisuals swaps the mesh at spawn
 
     public float spawnX = 7.0f;                   // Travel-axis spawn line near the top of the field
     public float spawnY = 0.6f;                   // Height the rocks sit at above the ground
@@ -17,6 +17,7 @@ public class SpawnManager : MonoBehaviour
     [SerializeField] private int maxObstaclesCap = 8;             // Ceiling the ramp can raise maxObstacles to
 
     [Header("Rock Variety")]
+    [SerializeField] private GameObject[] rockVisuals;  // Mesh prefabs swapped onto the shell (PolyOne, JC, etc.)
     [SerializeField] private Vector2 rockScaleRange = new Vector2(0.7f, 1.4f);  // Random size multiplier per rock
     [SerializeField] private Vector2 rockSpeedJitter = new Vector2(-1f, 2f);    // Random speed offset per rock
     [SerializeField] private float rockSpeedMultiplier = 2.25f;                  // Match decorative trees so rocks travel at the same world speed
@@ -73,22 +74,29 @@ public class SpawnManager : MonoBehaviour
         if (obstacles.Length == 0)
             return;
 
-        // Don't add more rocks once we're at the cap, so the field can't fill up endlessly.
         if (FindObjectsByType<MoveDown>(FindObjectsInactive.Exclude).Length >= maxObstacles)
             return;
 
-        // Spawn on the fixed X line, spread randomly across the field between
-        // the two side walls (Z). The rock then travels down the screen.
-        int obstacleIndex = Random.Range(0, obstacles.Length);
-        if (obstacles[obstacleIndex] == null)
-            return;
-
-        // Vary each rock: random size (bigger rocks sit higher so they don't clip the
-        // ground) and a random speed offset on top of the difficulty ramp's bonus.
         float sizeMultiplier = Random.Range(rockScaleRange.x, rockScaleRange.y);
         float randomZ = Random.Range(minZ, maxZ);
         Vector3 spawnPos = new Vector3(spawnX, spawnY * sizeMultiplier, randomZ);
-        GameObject rock = Instantiate(obstacles[obstacleIndex], spawnPos, obstacles[obstacleIndex].transform.rotation);
+
+        GameObject rock;
+        if (rockVisuals != null && rockVisuals.Length > 0)
+        {
+            if (obstacles[0] == null)
+                return;
+            rock = Instantiate(obstacles[0], spawnPos, obstacles[0].transform.rotation);
+            ApplyRandomVisual(rock);
+        }
+        else
+        {
+            int obstacleIndex = Random.Range(0, obstacles.Length);
+            if (obstacles[obstacleIndex] == null)
+                return;
+            rock = Instantiate(obstacles[obstacleIndex], spawnPos, obstacles[obstacleIndex].transform.rotation);
+        }
+
         rock.transform.localScale *= sizeMultiplier;
 
         MoveDown mover = rock.GetComponentInChildren<MoveDown>();
@@ -99,6 +107,59 @@ public class SpawnManager : MonoBehaviour
                 : mover.speed;
             mover.speed = Mathf.Max(1.5f, baseRockSpeed + rockSpeedBonus + Random.Range(rockSpeedJitter.x, rockSpeedJitter.y));
         }
+    }
+
+    void ApplyRandomVisual(GameObject rock)
+    {
+        for (int i = rock.transform.childCount - 1; i >= 0; i--)
+            Destroy(rock.transform.GetChild(i).gameObject);
+
+        GameObject visualPrefab = rockVisuals[Random.Range(0, rockVisuals.Length)];
+        if (visualPrefab == null)
+            return;
+
+        GameObject visual = Instantiate(visualPrefab, rock.transform);
+        visual.transform.localPosition = Vector3.zero;
+        visual.transform.localRotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+
+        foreach (var childCollider in visual.GetComponentsInChildren<Collider>())
+            childCollider.enabled = false;
+
+        AlignVisualToGround(visual, rock);
+        FitSphereColliderToVisual(rock, visual);
+    }
+
+    void AlignVisualToGround(GameObject visual, GameObject rock)
+    {
+        var renderers = visual.GetComponentsInChildren<Renderer>();
+        if (renderers.Length == 0)
+            return;
+
+        Bounds bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
+
+        visual.transform.position += Vector3.up * (rock.transform.position.y - bounds.min.y);
+    }
+
+    void FitSphereColliderToVisual(GameObject rock, GameObject visual)
+    {
+        var collider = rock.GetComponent<SphereCollider>();
+        if (collider == null)
+            return;
+
+        var renderers = visual.GetComponentsInChildren<Renderer>();
+        if (renderers.Length == 0)
+            return;
+
+        Bounds bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
+
+        collider.center = rock.transform.InverseTransformPoint(bounds.center);
+        float maxExtent = Mathf.Max(bounds.extents.x, bounds.extents.y, bounds.extents.z);
+        float uniformScale = Mathf.Max(rock.transform.lossyScale.x, 0.001f);
+        collider.radius = maxExtent / uniformScale;
     }
 
     // Read the side walls so spawns land between them (matches the clamp the rocks use).

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -11,6 +12,7 @@ public class VehicleSelector : MonoBehaviour
     [SerializeField] private GameObject[] vehicleVisuals;
     [SerializeField] private ParticleSystem[] dirtEmitters;   // Rear-tire dirt spray; repositioned to fit each vehicle
     [SerializeField] private bool showEmitterOrientationGizmos = true;
+    [SerializeField] private float targetFootprint;  // 0 = auto median horizontal extent across all visuals
 
     private int index;
     private GameManager gameManager;
@@ -35,7 +37,10 @@ public class VehicleSelector : MonoBehaviour
         if (vehicleVisuals == null || vehicleVisuals.Length == 0)
             return;
 
+        CompactVehicleVisuals();
+        NormalizeVisualScales();
         index = Mathf.Clamp(PlayerPrefs.GetInt(VehicleIndexKey, 0), 0, vehicleVisuals.Length - 1);
+        NormalizeVisualPositions();
         Apply();
     }
 
@@ -55,7 +60,7 @@ public class VehicleSelector : MonoBehaviour
         if (dirtEmitters == null)
             return;
 
-        bool driving = gameManager != null && gameManager.IsGameActive && !gameManager.IsPaused;
+        bool driving = gameManager != null && gameManager.IsWorldAnimating;
         foreach (var emitter in dirtEmitters)
         {
             if (emitter == null) continue;
@@ -96,6 +101,118 @@ public class VehicleSelector : MonoBehaviour
         FitColliderToVisual();
     }
 
+    // Drop null/missing entries left when a vehicle prefab is deleted but the array size is not compacted.
+    void CompactVehicleVisuals()
+    {
+        if (vehicleVisuals == null || vehicleVisuals.Length == 0)
+            return;
+
+        var compacted = new List<GameObject>(vehicleVisuals.Length);
+        foreach (var visual in vehicleVisuals)
+        {
+            if (visual != null)
+                compacted.Add(visual);
+        }
+
+        if (compacted.Count == 0)
+        {
+            vehicleVisuals = System.Array.Empty<GameObject>();
+            return;
+        }
+
+        if (compacted.Count != vehicleVisuals.Length)
+            vehicleVisuals = compacted.ToArray();
+    }
+
+    // Scale each visual so its top-down footprint matches the fleet median (or targetFootprint).
+    void NormalizeVisualScales()
+    {
+        if (vehicleVisuals == null || vehicleVisuals.Length == 0)
+            return;
+
+        var footprints = new List<float>(vehicleVisuals.Length);
+        foreach (var visual in vehicleVisuals)
+        {
+            if (visual == null)
+                continue;
+
+            bool wasActive = visual.activeSelf;
+            visual.SetActive(true);
+            float footprint = MeasureFootprint(visual);
+            if (footprint > 0.001f)
+                footprints.Add(footprint);
+            visual.SetActive(wasActive);
+        }
+
+        if (footprints.Count == 0)
+            return;
+
+        footprints.Sort();
+        float target = targetFootprint > 0.001f
+            ? targetFootprint
+            : footprints[footprints.Count / 2];
+
+        foreach (var visual in vehicleVisuals)
+        {
+            if (visual == null)
+                continue;
+
+            bool wasActive = visual.activeSelf;
+            visual.SetActive(true);
+            float footprint = MeasureFootprint(visual);
+            if (footprint > 0.001f)
+            {
+                float scaleFactor = target / footprint;
+                visual.transform.localScale *= scaleFactor;
+            }
+            visual.SetActive(wasActive);
+        }
+    }
+
+    static float MeasureFootprint(GameObject visual)
+    {
+        var renderers = visual.GetComponentsInChildren<Renderer>(false);
+        if (renderers.Length == 0)
+            return 0f;
+
+        Bounds bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
+
+        return Mathf.Max(bounds.size.x, bounds.size.z);
+    }
+
+    // Imported vehicle prefabs ship with different pivots; align each model's ground center
+    // to the player anchor so cycling vehicles does not shift the car on screen.
+    void NormalizeVisualPositions()
+    {
+        foreach (var visual in vehicleVisuals)
+        {
+            if (visual == null)
+                continue;
+
+            bool wasActive = visual.activeSelf;
+            visual.SetActive(true);
+            AlignVisualToOrigin(visual);
+            visual.SetActive(wasActive);
+        }
+    }
+
+    void AlignVisualToOrigin(GameObject visual)
+    {
+        var renderers = visual.GetComponentsInChildren<Renderer>(false);
+        if (renderers.Length == 0)
+            return;
+
+        Bounds bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
+
+        Vector3 bottomCenterWorld = new Vector3(bounds.center.x, bounds.min.y, bounds.center.z);
+        Vector3 bottomCenterLocal = transform.InverseTransformPoint(bottomCenterWorld);
+        visual.transform.localPosition -= bottomCenterLocal;
+    }
+
     // Size the hitbox to the visible car so rocks touch the model before they collide,
     // instead of bouncing off the old cube-sized box ("invisible wall").
     void FitColliderToVisual()
@@ -132,27 +249,20 @@ public class VehicleSelector : MonoBehaviour
         float groundY = box.center.y - box.size.y * 0.5f + 0.15f;
         float halfTrack = box.size.z * 0.3f;                                // roughly where the rear tires sit
 
-        // Match the dirt spray to the road motion so the particles trail the vehicle in the direction the road is moving.
-        Vector3 moveDirection = groundScroller != null ? groundScroller.WorldMoveDirection : Vector3.zero;
-        if (moveDirection.sqrMagnitude > 0.0001f)
-            moveDirection = moveDirection.normalized;
+        // Emitters spray along local +X; align that axis with road travel. Left emitter rolls 180°
+        // to mirror the authored cone on the right (confirmed visually in play mode).
+        Vector3 moveDirection = groundScroller != null ? groundScroller.WorldMoveDirection : Vector3.left;
+        Quaternion baseRotation = Quaternion.FromToRotation(Vector3.right, moveDirection);
 
         for (int i = 0; i < dirtEmitters.Length; i++)
         {
             if (dirtEmitters[i] == null) continue;
             float side = i == 0 ? -1f : 1f;
             dirtEmitters[i].transform.localPosition = new Vector3(rearX, groundY, box.center.z + side * halfTrack);
-
-            Quaternion emitterRotation = Quaternion.identity;
-            if (moveDirection.sqrMagnitude > 0.0001f)
-                emitterRotation = Quaternion.FromToRotation(Vector3.right, moveDirection);
-
-            if (side < 0f)
-                emitterRotation *= Quaternion.Euler(180f, 0f, 0f);
-
-            dirtEmitters[i].transform.localRotation = emitterRotation;
+            dirtEmitters[i].transform.localRotation = side < 0f
+                ? baseRotation * Quaternion.Euler(180f, 0f, 0f)
+                : baseRotation;
         }
-
     }
 
     void OnDrawGizmosSelected()

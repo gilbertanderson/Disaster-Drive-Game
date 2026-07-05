@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
@@ -8,7 +7,6 @@ public class VehicleSelectorTests
     private GameObject groundGameObject;
     private GameObject selectorGameObject;
     private VehicleSelector selector;
-    private GameObject emitterGameObject;
     private ParticleSystem emitter;
     private GameObject vehicleVisual;
     private GameObject vehicleVisual2;
@@ -35,7 +33,7 @@ public class VehicleSelectorTests
         vehicleVisual2.transform.parent = selectorGameObject.transform;
         vehicleVisual2.transform.localPosition = new Vector3(1.5f, 0f, 0f);
 
-        emitterGameObject = new GameObject("DirtEmitter");
+        var emitterGameObject = new GameObject("DirtEmitter");
         emitterGameObject.transform.parent = selectorGameObject.transform;
         emitter = emitterGameObject.AddComponent<ParticleSystem>();
 
@@ -49,9 +47,6 @@ public class VehicleSelectorTests
         PlayerPrefs.DeleteAll();
         Object.DestroyImmediate(groundGameObject);
         Object.DestroyImmediate(selectorGameObject);
-        Object.DestroyImmediate(emitterGameObject);
-        Object.DestroyImmediate(vehicleVisual);
-        Object.DestroyImmediate(vehicleVisual2);
     }
 
     [Test]
@@ -104,6 +99,62 @@ public class VehicleSelectorTests
         Assert.That(Vector3.Dot(leftEmitter.transform.forward, rightEmitter.transform.forward), Is.LessThan(0f));
     }
 
+    [Test]
+    public void Awake_CompactsNullVehicleVisuals()
+    {
+        var vehicleVisual3 = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        vehicleVisual3.name = "VehicleVisual3";
+        vehicleVisual3.transform.parent = selectorGameObject.transform;
+
+        SetPrivateField(selector, "vehicleVisuals", new GameObject[] { vehicleVisual, null, vehicleVisual3 });
+        InvokePrivateMethod("Awake");
+
+        var compacted = GetPrivateVehicleVisuals(selector);
+        Assert.That(compacted.Length, Is.EqualTo(2));
+        Assert.That(compacted[0], Is.SameAs(vehicleVisual));
+        Assert.That(compacted[1], Is.SameAs(vehicleVisual3));
+    }
+
+    [Test]
+    public void Cycle_NeverLeavesAllVisualsInactive()
+    {
+        var vehicleVisual3 = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        vehicleVisual3.name = "VehicleVisual3";
+        vehicleVisual3.transform.parent = selectorGameObject.transform;
+
+        SetPrivateField(selector, "vehicleVisuals", new GameObject[] { vehicleVisual, null, vehicleVisual3 });
+        InvokePrivateMethod("Awake");
+
+        int count = GetPrivateVehicleVisuals(selector).Length;
+        for (int step = 0; step < count; step++)
+        {
+            selector.NextVehicle();
+
+            int activeCount = 0;
+            GameObject activeVisual = null;
+            foreach (var visual in GetPrivateVehicleVisuals(selector))
+            {
+                if (visual != null && visual.activeSelf)
+                {
+                    activeCount++;
+                    activeVisual = visual;
+                }
+            }
+
+            Assert.That(activeCount, Is.EqualTo(1), $"Step {step}: expected exactly one active vehicle visual.");
+            Assert.IsNotNull(activeVisual.GetComponentInChildren<Renderer>(),
+                $"Step {step}: active visual should have a renderer.");
+        }
+    }
+
+    private static GameObject[] GetPrivateVehicleVisuals(VehicleSelector target)
+    {
+        var field = typeof(VehicleSelector).GetField("vehicleVisuals",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(field, "Could not find private field 'vehicleVisuals' on VehicleSelector.");
+        return (GameObject[])field.GetValue(target);
+    }
+
     private static void SetPrivateField(object target, string fieldName, object value)
     {
         var field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
@@ -116,21 +167,5 @@ public class VehicleSelectorTests
         var method = typeof(VehicleSelector).GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
         Assert.IsNotNull(method, $"Could not find method '{methodName}' on VehicleSelector.");
         method.Invoke(selector, null);
-    }
-}
-
-internal sealed class Vector3EqualityComparer : IEqualityComparer<Vector3>
-{
-    public static readonly Vector3EqualityComparer Instance = new Vector3EqualityComparer();
-    private const float Epsilon = 1e-4f;
-
-    public bool Equals(Vector3 x, Vector3 y)
-    {
-        return Vector3.SqrMagnitude(x - y) < Epsilon * Epsilon;
-    }
-
-    public int GetHashCode(Vector3 obj)
-    {
-        return obj.GetHashCode();
     }
 }
