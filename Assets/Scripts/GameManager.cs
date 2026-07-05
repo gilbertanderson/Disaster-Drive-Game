@@ -106,7 +106,11 @@ public class GameManager : MonoBehaviour
         player = FindAnyObjectByType<PlayerController>();
         spawnManager = FindAnyObjectByType<SpawnManager>();
         if (cameraShake == null)
-            cameraShake = FindAnyObjectByType<CameraShake>();
+        {
+            cameraShake = Camera.main != null ? Camera.main.GetComponent<CameraShake>() : null;
+            if (cameraShake == null)
+                cameraShake = FindAnyObjectByType<CameraShake>();
+        }
 
         if (sunLight == null)
             sunLight = RenderSettings.sun;
