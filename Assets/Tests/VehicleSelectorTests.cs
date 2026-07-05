@@ -87,6 +87,23 @@ public class VehicleSelectorTests
         Assert.That(emitter.transform.localRotation, Is.EqualTo(initialRotation));
     }
 
+    [Test]
+    public void Apply_OrientsLeftAndRightEmittersInOppositeDirections()
+    {
+        var leftEmitterGameObject = new GameObject("RearDirt_L");
+        leftEmitterGameObject.transform.parent = selectorGameObject.transform;
+        var leftEmitter = leftEmitterGameObject.AddComponent<ParticleSystem>();
+
+        var rightEmitterGameObject = new GameObject("RearDirt_R");
+        rightEmitterGameObject.transform.parent = selectorGameObject.transform;
+        var rightEmitter = rightEmitterGameObject.AddComponent<ParticleSystem>();
+
+        SetPrivateField(selector, "dirtEmitters", new ParticleSystem[] { leftEmitter, rightEmitter });
+        InvokePrivateMethod("Awake");
+
+        Assert.That(Vector3.Dot(leftEmitter.transform.right, rightEmitter.transform.right), Is.LessThan(0f));
+    }
+
     private static void SetPrivateField(object target, string fieldName, object value)
     {
         var field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);

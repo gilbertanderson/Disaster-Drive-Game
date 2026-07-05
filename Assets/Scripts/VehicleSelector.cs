@@ -143,8 +143,14 @@ public class VehicleSelector : MonoBehaviour
             float side = i == 0 ? -1f : 1f;
             dirtEmitters[i].transform.localPosition = new Vector3(rearX, groundY, box.center.z + side * halfTrack);
 
+            Quaternion emitterRotation = Quaternion.identity;
             if (moveDirection.sqrMagnitude > 0.0001f)
-                dirtEmitters[i].transform.localRotation = Quaternion.FromToRotation(Vector3.right, moveDirection);
+                emitterRotation = Quaternion.FromToRotation(Vector3.right, moveDirection);
+
+            if (side < 0f)
+                emitterRotation *= Quaternion.Euler(0f, 180f, 0f);
+
+            dirtEmitters[i].transform.localRotation = emitterRotation;
         }
 
     }
