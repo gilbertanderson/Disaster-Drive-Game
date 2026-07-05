@@ -132,14 +132,19 @@ public class VehicleSelector : MonoBehaviour
         float groundY = box.center.y - box.size.y * 0.5f + 0.15f;
         float halfTrack = box.size.z * 0.3f;                                // roughly where the rear tires sit
 
-        // Get the actual road direction from GroundScroller, fall back to down-screen if not found
-        Vector3 moveDirection = groundScroller != null ? groundScroller.WorldMoveDirection : Vector3.left;
+        // Match the dirt spray to the road motion so the particles trail the vehicle in the direction the road is moving.
+        Vector3 moveDirection = groundScroller != null ? groundScroller.WorldMoveDirection : Vector3.zero;
+        if (moveDirection.sqrMagnitude > 0.0001f)
+            moveDirection = moveDirection.normalized;
 
         for (int i = 0; i < dirtEmitters.Length; i++)
         {
             if (dirtEmitters[i] == null) continue;
             float side = i == 0 ? -1f : 1f;
             dirtEmitters[i].transform.localPosition = new Vector3(rearX, groundY, box.center.z + side * halfTrack);
+
+            if (moveDirection.sqrMagnitude > 0.0001f)
+                dirtEmitters[i].transform.localRotation = Quaternion.FromToRotation(Vector3.right, moveDirection);
         }
 
     }

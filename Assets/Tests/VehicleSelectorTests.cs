@@ -73,6 +73,13 @@ public class VehicleSelectorTests
     }
 
     [Test]
+    public void Awake_AlignsEmitterToRoadMovementDirection()
+    {
+        InvokePrivateMethod("Awake");
+        Assert.That(emitter.transform.right, Is.EqualTo(Vector3.back).Using(Vector3EqualityComparer.Instance));
+    }
+
+    [Test]
     public void Update_DoesNotChangeEmitterRotationFromDefault()
     {
         var initialRotation = emitter.transform.localRotation;
