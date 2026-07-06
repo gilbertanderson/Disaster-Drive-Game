@@ -18,7 +18,7 @@ public static class RubricE2EVideoMenu
             return;
         }
 
-        RubricE2ERecording.VideoEnabled = true;
+        RubricE2EVideoSettings.VideoEnabled = true;
 
         var api = ScriptableObject.CreateInstance<TestRunnerApi>();
         var filter = new Filter
@@ -38,12 +38,12 @@ public static class RubricE2EVideoMenu
 
         public void RunFinished(ITestResultAdaptor result)
         {
-            RubricE2ERecording.VideoEnabled = false;
+            RubricE2EVideoSettings.VideoEnabled = false;
 
             int passed = result.PassCount;
             int failed = result.FailCount;
             int total = passed + failed + result.SkipCount;
-            string outputRoot = RubricE2ERecording.OutputRoot;
+            string outputRoot = RubricE2EVideoSettings.OutputRoot;
 
             Debug.Log($"Rubric E2E finished: {passed}/{total} passed, {failed} failed. Review videos in {outputRoot}");
 

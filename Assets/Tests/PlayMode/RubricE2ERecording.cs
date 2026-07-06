@@ -9,14 +9,11 @@ using UnityEngine;
 /// </summary>
 public static class RubricE2ERecording
 {
-    public static bool VideoEnabled { get; set; }
-
     static string activeScenario;
     static string framesDirectory;
     static int frameIndex;
 
-    public static string OutputRoot =>
-        Path.GetFullPath(Path.Combine(Application.dataPath, "..", "TestResults", "RubricE2E"));
+    static bool VideoEnabled => RubricE2EVideoSettings.VideoEnabled;
 
     public static IEnumerator Begin(string scenarioName)
     {
@@ -24,7 +21,7 @@ public static class RubricE2ERecording
             yield break;
 
         activeScenario = scenarioName;
-        framesDirectory = Path.Combine(OutputRoot, scenarioName, "frames");
+        framesDirectory = Path.Combine(RubricE2EVideoSettings.OutputRoot, scenarioName, "frames");
         frameIndex = 0;
 
         if (Directory.Exists(framesDirectory))
@@ -64,7 +61,7 @@ public static class RubricE2ERecording
 
         yield return CaptureFrame();
 
-        string scenarioDir = Path.Combine(OutputRoot, activeScenario);
+        string scenarioDir = Path.Combine(RubricE2EVideoSettings.OutputRoot, activeScenario);
         string videoPath = Path.Combine(scenarioDir, "video.webm");
 
 #if UNITY_EDITOR
