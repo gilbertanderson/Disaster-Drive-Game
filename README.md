@@ -58,6 +58,26 @@ Edit Mode tests live in `Assets/Tests/` (**25+ tests** across 4 files).
 
 Tests cover vehicle selection, dirt emitters, game-over exit drive, near-miss scoring, pause, leaderboard, ground scroll gating, and core gameplay rules.
 
+### Rubric E2E (Play Mode + video)
+
+Play Mode tests in `Assets/Tests/PlayMode/RubricE2ETests.cs` map directly to [`PROJECT_4_RUBRIC.md`](PROJECT_4_RUBRIC.md) (gameplay, audio, particles).
+
+**Run with video capture (recommended before submit):**
+
+1. Open `Assets/Scenes/My Game.unity`.
+2. **Disaster → Run Rubric E2E with Video** (records every scenario).
+3. Review videos at `TestResults/RubricE2E/<scenario>/video.webm` (e.g. `open TestResults/RubricE2E/01_start_screen_disaster_title/video.webm`).
+
+Requires **ffmpeg** on your PATH for `.webm` encoding (`brew install ffmpeg`). Without ffmpeg, PNG frame sequences are still saved under each scenario’s `frames/` folder.
+
+**Run without video:** Test Runner → **PlayMode** tab → run `RubricE2ETests` (faster; no screen capture).
+
+| Test | Rubric area |
+|------|-------------|
+| `01`–`08` | Gameplay improvements (start, drive, WASD, hit penalty, near-miss, pause, game over, rock spawn) |
+| `09` | Music & sound (impact, music, click, near-miss clips) |
+| `10` | Particle effects (dust, rubble, fireworks, vehicle dirt emitters) |
+
 Unity MCP can also run Edit Mode tests when the Editor is connected.
 
 ## Key Features
