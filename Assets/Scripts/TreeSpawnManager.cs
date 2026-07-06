@@ -55,7 +55,7 @@ public class TreeSpawnManager : MonoBehaviour
         float z = tree.transform.position.z;
         Destroy(tree.gameObject);
 
-        if (gameManager != null && gameManager.IsGameActive && !gameManager.IsPaused)
+        if (gameManager != null && gameManager.IsWorldAnimating)
             SpawnTree(z, spawnX + Random.Range(xJitter.x, xJitter.y));
     }
 

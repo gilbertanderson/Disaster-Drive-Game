@@ -36,7 +36,7 @@ public class GroundScroller : MonoBehaviour
 
     void Update()
     {
-        if (gameManager != null && (!gameManager.IsGameActive || gameManager.IsPaused))
+        if (gameManager != null && !gameManager.IsWorldAnimating)
             return;
 
         offset += scrollSpeed * Time.deltaTime * scrollDirection.normalized;

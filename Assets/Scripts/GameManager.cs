@@ -15,6 +15,8 @@ public class GameManager : MonoBehaviour
     [Header("Timer")]
     [SerializeField] private float startTime = 60f;   // Seconds on the clock at the start of a run
     [SerializeField] private float hitPenalty = 5f;   // Seconds removed when the vehicle hits a rock
+    [SerializeField] private float nearMissBonus = 2f;       // Seconds added for a close dodge
+    [SerializeField] private float nearMissCooldown = 1.5f;  // Minimum gap between near-miss awards
 
     [Header("Difficulty")]
     [SerializeField] private float rampInterval = 10f;             // Seconds between difficulty bumps
@@ -48,8 +50,9 @@ public class GameManager : MonoBehaviour
     [SerializeField] private GameObject pausePanel;      // PAUSED overlay with resume and music buttons
     [SerializeField] private TMP_Text bestTimeText;      // Longest-survival record shown on the start screen
     [SerializeField] private TMP_Text runTimeText;       // This playthrough's survival time, on the game over screen
+    [SerializeField] private TMP_Text gameOverStatsText; // Dodges, hits, streak, and wave on the game over screen
     [SerializeField] private GameObject newBestText;     // "NEW BEST!" banner, shown when the record is beaten
-    [SerializeField] private TMP_Text penaltyPopupText;  // "-5s" popup that flashes when a rock is hit
+    [SerializeField] private TMP_Text penaltyPopupText;  // "-5s" / "+2s" popup for hit penalties and near-miss bonuses
     [SerializeField] private TMP_Text musicButtonLabel;  // Pause overlay button label ("MUSIC: ON/OFF")
 
     [Header("Impact Feedback")]
@@ -69,6 +72,8 @@ public class GameManager : MonoBehaviour
     // False on the start screen and after game over; the player and spawner only run while true.
     public bool IsGameActive { get; private set; }
     public bool IsPaused { get; private set; }
+    public bool IsVehicleExiting { get; private set; }
+    public bool IsWorldAnimating => (IsGameActive || IsVehicleExiting) && !IsPaused;
 
     // True only while the title screen is showing (not mid-run, not game over).
     public bool IsOnStartScreen => !IsGameActive && startPanel != null && startPanel.activeInHierarchy;
@@ -78,10 +83,16 @@ public class GameManager : MonoBehaviour
     private float nextRampTime;
     private float lightingElapsed;
     private float displayedTimer;
+    private float lastHitTime;
+    private float lastNearMissTime;
+    private float bestStreak;
+    private int rocksDodged;
+    private int hitsTaken;
     private AudioSource sfxSource;
     private PlayerController player;
     private SpawnManager spawnManager;
     private Color timerDefaultColor;
+    private Color penaltyPopupDefaultColor;
     private Coroutine startPanelHideRoutine;
     private Coroutine gameOverShowRoutine;
     private Coroutine pausePanelRoutine;
@@ -116,6 +127,7 @@ public class GameManager : MonoBehaviour
         if (newBestText != null) newBestText.SetActive(false);
         if (penaltyPopupText != null) penaltyPopupText.gameObject.SetActive(false);
         if (timerText != null) timerDefaultColor = timerText.color;
+        if (penaltyPopupText != null) penaltyPopupDefaultColor = penaltyPopupText.color;
 
         UpdateLeaderboardDisplay();
 
@@ -141,6 +153,10 @@ public class GameManager : MonoBehaviour
         timeRemaining -= Time.deltaTime;
         displayedTimer = Mathf.Lerp(displayedTimer, timeRemaining, Time.deltaTime * 8f);
         UpdateTimerDisplay();
+
+        float currentStreak = Time.timeSinceLevelLoad - lastHitTime;
+        if (currentStreak > bestStreak)
+            bestStreak = currentStreak;
 
         // Difficulty ramp: every rampInterval seconds the vehicle accelerates and the
         // rocks spawn sooner and travel faster, so dodging gets progressively harder.
@@ -205,6 +221,11 @@ public class GameManager : MonoBehaviour
 
         IsGameActive = true;
         gameStartTime = Time.timeSinceLevelLoad;
+        lastHitTime = gameStartTime;
+        lastNearMissTime = -nearMissCooldown;
+        bestStreak = 0f;
+        rocksDodged = 0;
+        hitsTaken = 0;
         nextRampTime = gameStartTime + rampInterval;
         if (startPanel != null)
         {
@@ -265,6 +286,8 @@ public class GameManager : MonoBehaviour
             return;
 
         timeRemaining -= hitPenalty;
+        hitsTaken++;
+        lastHitTime = Time.timeSinceLevelLoad;
         if (sfxSource != null && impactClip != null)
             sfxSource.PlayOneShot(impactClip);
 
@@ -283,12 +306,35 @@ public class GameManager : MonoBehaviour
             GameOver();
     }
 
+    public void OnNearMiss()
+    {
+        if (!IsGameActive || IsPaused)
+            return;
+
+        if (Time.timeSinceLevelLoad - lastNearMissTime < nearMissCooldown)
+            return;
+
+        lastNearMissTime = Time.timeSinceLevelLoad;
+        timeRemaining += nearMissBonus;
+        StartCoroutine(BonusFeedback());
+        UpdateTimerDisplay();
+    }
+
+    public void OnRockDodged()
+    {
+        if (!IsGameActive || IsPaused)
+            return;
+
+        rocksDodged++;
+    }
+
     // Flash a "-5s" popup and turn the timer red for a moment so the cost of a hit is obvious.
     IEnumerator PenaltyFeedback()
     {
         if (penaltyPopupText != null)
         {
             penaltyPopupText.text = "-" + Mathf.RoundToInt(hitPenalty) + "s";
+            penaltyPopupText.color = new Color(0.95f, 0.25f, 0.2f);
             penaltyPopupText.gameObject.SetActive(true);
         }
         if (timerText != null) timerText.color = new Color(0.95f, 0.25f, 0.2f);
@@ -296,7 +342,26 @@ public class GameManager : MonoBehaviour
         yield return new WaitForSeconds(0.6f);
 
         if (penaltyPopupText != null) penaltyPopupText.gameObject.SetActive(false);
+        if (penaltyPopupText != null) penaltyPopupText.color = penaltyPopupDefaultColor;
         if (timerText != null) timerText.color = timerDefaultColor;
+    }
+
+    IEnumerator BonusFeedback()
+    {
+        if (penaltyPopupText != null)
+        {
+            penaltyPopupText.text = "+" + Mathf.RoundToInt(nearMissBonus) + "s";
+            penaltyPopupText.color = new Color(0.3f, 0.95f, 0.4f);
+            penaltyPopupText.gameObject.SetActive(true);
+        }
+
+        yield return new WaitForSeconds(0.6f);
+
+        if (penaltyPopupText != null)
+        {
+            penaltyPopupText.gameObject.SetActive(false);
+            penaltyPopupText.color = penaltyPopupDefaultColor;
+        }
     }
 
     void UpdateTimerDisplay()
@@ -377,8 +442,19 @@ public class GameManager : MonoBehaviour
 
         // The record is the longest survival: real seconds from Drive until the clock ran out.
         float survival = Time.timeSinceLevelLoad - gameStartTime;
+        int waveReached = Mathf.Max(1, Mathf.FloorToInt(survival / rampInterval) + 1);
+        string statsText = "Dodged: " + rocksDodged
+            + "\nHits: " + hitsTaken
+            + "\nBest Streak: " + Mathf.FloorToInt(bestStreak) + "s"
+            + "\nWave: " + waveReached;
+
         if (runTimeText != null)
             runTimeText.text = "Time: " + Mathf.FloorToInt(survival) + "s";
+
+        if (gameOverStatsText != null)
+            gameOverStatsText.text = statsText;
+        else if (runTimeText != null)
+            runTimeText.text += "\n" + statsText;
 
         int rank = InsertScore(survival);
         bool madeTopFive = rank > 0;
@@ -405,6 +481,20 @@ public class GameManager : MonoBehaviour
         }
         if (musicSource != null) musicSource.volume = menuMusicVolume;
         if (spawnManager != null) spawnManager.StopSpawning();
-        if (player != null) player.enabled = false;   // Freeze the vehicle where it stands
+        if (player != null)
+        {
+            IsVehicleExiting = true;
+            player.BeginExitDrive();
+        }
+    }
+
+    public void OnVehicleExitComplete()
+    {
+        IsVehicleExiting = false;
+        if (player != null)
+        {
+            player.enabled = false;
+            player.gameObject.SetActive(false);
+        }
     }
 }

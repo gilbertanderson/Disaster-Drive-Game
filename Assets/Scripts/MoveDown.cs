@@ -25,13 +25,20 @@ public class MoveDown : MonoBehaviour
     private float minZ = float.NegativeInfinity;  // Lower Z limit from the walls (unbounded if unassigned)
     private float maxZ = float.PositiveInfinity;  // Upper Z limit from the walls
     private bool isKnockedAside;      // While true, physics drives the rock instead of the scripted rail
-    private GameManager gameManager;  // Rocks only travel while the game is active
+    private bool hitPlayer;           // True once the vehicle collides with this rock
+    private bool nearMissChecked;     // Near-miss bonus is evaluated at most once per rock
+    private Transform playerTransform;
+    private GameManager gameManager;  // Rocks travel while the world is animating (active run or exit drive)
+    [SerializeField] private float nearMissDistance = 2f;  // Lateral (Z) gap that still counts as a close dodge
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
         objectRb = GetComponent<Rigidbody>();
         gameManager = FindAnyObjectByType<GameManager>();
+        var player = FindAnyObjectByType<PlayerController>();
+        if (player != null)
+            playerTransform = player.transform;
         objectRb.useGravity = false;                          // Movement is script-driven, not gravity
         objectRb.constraints = RigidbodyConstraints.FreezeRotation    // Don't spin on impact
                              | RigidbodyConstraints.FreezePositionY;  // Stay on the ground; a hit only shoves it sideways
@@ -80,9 +87,11 @@ public class MoveDown : MonoBehaviour
     // FixedUpdate is the correct place for Rigidbody physics work
     void FixedUpdate()
     {
-        // Hold still until the player presses DRIVE (and freeze again at game over).
-        if (gameManager != null && !gameManager.IsGameActive)
+        // Hold still on the start screen; keep scrolling during the post-game-over exit drive.
+        if (gameManager != null && !gameManager.IsWorldAnimating)
             return;
+
+        TryAwardNearMiss();
 
         // While being knocked aside, let physics carry the rock freely so the vehicle
         // can shove it off to the side instead of it stopping dead on its scripted rail —
@@ -112,9 +121,26 @@ public class MoveDown : MonoBehaviour
         // player), destroy it so the spawner keeps feeding a fresh flow of rocks.
         if (Vector3.Dot(objectRb.position, moveDirection) > bottomThreshold)
         {
-            SpawnDestroyFx();
+            if (!hitPlayer && gameManager != null)
+                gameManager.OnRockDodged();
             Destroy(gameObject);
         }
+    }
+
+    void TryAwardNearMiss()
+    {
+        if (nearMissChecked || hitPlayer || playerTransform == null || gameManager == null || !gameManager.IsGameActive)
+            return;
+
+        float rockAlong = Vector3.Dot(objectRb.position, moveDirection);
+        float playerAlong = Vector3.Dot(playerTransform.position, moveDirection);
+        if (rockAlong <= playerAlong)
+            return;
+
+        nearMissChecked = true;
+        float lateralGap = Mathf.Abs(objectRb.position.z - playerTransform.position.z);
+        if (lateralGap <= nearMissDistance)
+            gameManager.OnNearMiss();
     }
 
     // When the player vehicle hits this rock, shove it aside for one tick so the impact
@@ -124,6 +150,7 @@ public class MoveDown : MonoBehaviour
         if (isKnockedAside || !collision.gameObject.CompareTag("Player"))
             return;
 
+        hitPlayer = true;
         isKnockedAside = true;
         objectRb.constraints = RigidbodyConstraints.FreezeRotation
                              | RigidbodyConstraints.FreezePositionY;
@@ -142,8 +169,7 @@ public class MoveDown : MonoBehaviour
         Destroy(gameObject);
     }
 
-    // Rubble burst + crush sound, scaled down to roughly this rock's own footprint so the
-    // effect doesn't dwarf a small rock (used both off-screen and on player-hit destruction).
+    // Rubble burst + crush sound on player-hit destruction, scaled to this rock's footprint.
     private void SpawnDestroyFx()
     {
         if (crushClip != null)
