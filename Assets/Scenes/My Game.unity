@@ -1276,18 +1276,18 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 503755964}
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1.0234542, y: 1.0234542, z: 1.0234542}
+  m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1051540882}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.5, y: 0.5}
-  m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 200, y: 50}
-  m_Pivot: {x: 0.5, y: 0.5}
+  m_AnchorMin: {x: 0.5, y: 1}
+  m_AnchorMax: {x: 0.5, y: 1}
+  m_AnchoredPosition: {x: 0, y: -108}
+  m_SizeDelta: {x: 500, y: 40}
+  m_Pivot: {x: 0.5, y: 1}
 --- !u!222 &503755966
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -1553,7 +1553,6 @@ MonoBehaviour:
   nearMissCooldown: 1.5
   rampInterval: 10
   playerSpeedIncrease: 0.75
-  rockSpeedIncrease: 0.5
   spawnIntervalMultiplier: 0.85
   sunLight: {fileID: 0}
   lightingTransitionDuration: 30
@@ -3073,20 +3072,14 @@ MonoBehaviour:
   obstaclesPerWaveIncrease: 2
   rockVisuals:
   - {fileID: 1732272334065596, guid: 27a15471d7a04fa79a40b96697ee4c0f, type: 3}
-  - {fileID: 4843524868254211946, guid: 010769286b0c40ef8d451a908c1ddbbc, type: 3}
   - {fileID: 7105557981267009923, guid: 36dd6c0b2d26488385d91ddc4c0d46dc, type: 3}
   - {fileID: 4356480299396696560, guid: a154cafad708465181456bee0343aacb, type: 3}
   - {fileID: 1604413879457636381, guid: 9980ebc82c714fd0b09996b4158c0dab, type: 3}
   - {fileID: 2586713759252572031, guid: 213a6eac21b548cca89d6ad12ab6b7b5, type: 3}
-  - {fileID: 5514129879276577408, guid: 0d90b8c6bf374a3a9780e7976bb1adf8, type: 3}
-  - {fileID: 6819962056721478856, guid: 59b55d64684a4d75a8e512586840d09d, type: 3}
-  - {fileID: 1418860561918544383, guid: 6ddf7674252e4fb1a9c462846c1b27d2, type: 3}
   - {fileID: 5389395240314065769, guid: d0755fa97beb49ce842502edef059f85, type: 3}
-  - {fileID: 299869526856194824, guid: cc4a8334616843e69ef27c4993b096f0, type: 3}
-  - {fileID: 2010085120437849477, guid: f1689753a1cd49cca0ad5b4f12b3d167, type: 3}
   rockScaleRange: {x: 1.3, y: 1.4}
-  rockSpeedJitter: {x: -1, y: 2}
   rockSpeedMultiplier: 2.25
+  minRockVisualFootprint: 1.2
   minRockFootprint: 0
   minRockHeight: 1.8
   rockGroundBurialFraction: 0.2

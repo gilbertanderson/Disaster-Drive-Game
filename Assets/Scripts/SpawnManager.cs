@@ -24,8 +24,8 @@ public class SpawnManager : MonoBehaviour
     [Header("Rock Variety")]
     [SerializeField] private GameObject[] rockVisuals;  // Mesh prefabs swapped onto the shell (PolyOne, JC, etc.)
     [SerializeField] private Vector2 rockScaleRange = new Vector2(1.3f, 1.4f);  // Random size multiplier per rock
-    [SerializeField] private Vector2 rockSpeedJitter = new Vector2(-1f, 2f);    // Random speed offset per rock
     [SerializeField] private float rockSpeedMultiplier = 2.25f;                  // Match decorative trees so rocks travel at the same world speed
+    [SerializeField] private float minRockVisualFootprint = 1.2f;                // Drop prefab variants smaller than this at authored scale
     [SerializeField] private float minRockFootprint;  // 0 = auto-detect from convertible at runtime
     [SerializeField] private float minRockHeight = 1.8f;                         // Minimum world-space visual height after scaling
     [SerializeField] private float rockGroundBurialFraction = 0.2f;              // Fraction of rock height below the road surface
@@ -34,21 +34,14 @@ public class SpawnManager : MonoBehaviour
     private static readonly string[] KnownRockVisualPaths =
     {
         "Assets/Prefabs/RockVisuals/RockVisual_Boulder.prefab",
-        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_01.prefab",
         "Assets/Prefabs/RockVisuals/RockVisual_Rocks_02.prefab",
         "Assets/Prefabs/RockVisuals/RockVisual_Rocks_03.prefab",
         "Assets/Prefabs/RockVisuals/RockVisual_Rocks_04.prefab",
         "Assets/Prefabs/RockVisuals/RockVisual_Rocks_05.prefab",
-        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_06.prefab",
-        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_07.prefab",
-        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_08.prefab",
         "Assets/Prefabs/RockVisuals/RockVisual_Rocks_09.prefab",
-        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_10.prefab",
-        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_11.prefab",
     };
 
     private float currentInterval;                // Live spawn interval; shrinks as difficulty ramps
-    private float rockSpeedBonus;                 // Added to each newly spawned rock's speed
     private bool isSpawning = true;
     private float minZ = -5.0f;                   // Lateral spawn range between the walls (recomputed from the walls in Start)
     private float maxZ = 10.0f;
@@ -128,11 +121,10 @@ public class SpawnManager : MonoBehaviour
         }
     }
 
-    // Called by GameManager on each difficulty bump: rocks travel faster, spawn
-    // sooner, and slightly more of them are allowed on the field at once.
-    public void IncreaseDifficulty(float rockSpeedIncrease, float intervalMultiplier)
+    // Called by GameManager on each difficulty bump: rocks spawn sooner and
+    // slightly more of them are allowed on the field at once.
+    public void IncreaseDifficulty(float intervalMultiplier)
     {
-        rockSpeedBonus += rockSpeedIncrease;
         currentInterval = Mathf.Max(currentInterval * intervalMultiplier, minSpawnInterval);
         maxObstacles = Mathf.Min(maxObstacles + obstaclesPerWaveIncrease, maxObstaclesCap);
     }
@@ -200,10 +192,10 @@ public class SpawnManager : MonoBehaviour
         MoveDown mover = rock.GetComponentInChildren<MoveDown>();
         if (mover != null)
         {
-            float baseRockSpeed = groundScroller != null
-                ? groundScroller.WorldSpeed * rockSpeedMultiplier
+            float scrollSpeed = groundScroller != null
+                ? groundScroller.PropScrollSpeed(rockSpeedMultiplier)
                 : mover.speed;
-            mover.speed = Mathf.Max(1.5f, baseRockSpeed + rockSpeedBonus + Random.Range(rockSpeedJitter.x, rockSpeedJitter.y));
+            mover.speed = Mathf.Max(1.5f, scrollSpeed);
         }
     }
 
@@ -318,27 +310,114 @@ public class SpawnManager : MonoBehaviour
 
     GameObject[] BuildValidRockVisualList()
     {
-        var valid = new List<GameObject>();
+        var candidates = new List<GameObject>();
         if (rockVisuals != null)
         {
             foreach (var entry in rockVisuals)
             {
-                if (TryGetRockVisualPrefab(entry, out GameObject prefab) && !valid.Contains(prefab))
-                    valid.Add(prefab);
+                if (TryGetRockVisualPrefab(entry, out GameObject prefab) && !candidates.Contains(prefab))
+                    candidates.Add(prefab);
             }
         }
 
-        if (valid.Count == 0)
+        if (candidates.Count == 0)
         {
             foreach (var path in KnownRockVisualPaths)
             {
                 var loaded = LoadRockVisualAtPath(path);
-                if (loaded != null && !valid.Contains(loaded))
-                    valid.Add(loaded);
+                if (loaded != null && !candidates.Contains(loaded))
+                    candidates.Add(loaded);
             }
         }
 
+        return FilterRockVisualsByFootprint(candidates);
+    }
+
+    GameObject[] FilterRockVisualsByFootprint(List<GameObject> candidates)
+    {
+        if (minRockVisualFootprint <= 0.001f)
+            return candidates.ToArray();
+
+        var valid = new List<GameObject>();
+        var excluded = new List<string>();
+        foreach (var prefab in candidates)
+        {
+            if (prefab == null)
+                continue;
+
+            float footprint = MeasurePrefabFootprint(prefab);
+            if (footprint >= minRockVisualFootprint)
+                valid.Add(prefab);
+            else
+                excluded.Add($"{prefab.name} ({footprint:F2})");
+        }
+
+        if (excluded.Count > 0)
+            Debug.Log($"SpawnManager excluded small rock visuals (min footprint {minRockVisualFootprint:F2}): {string.Join(", ", excluded)}", this);
+
+        if (valid.Count == 0 && candidates.Count > 0)
+        {
+            Debug.LogWarning("SpawnManager: all rock visuals were below minRockVisualFootprint; keeping largest candidate.", this);
+            GameObject largest = candidates[0];
+            float largestFootprint = MeasurePrefabFootprint(largest);
+            for (int i = 1; i < candidates.Count; i++)
+            {
+                float footprint = MeasurePrefabFootprint(candidates[i]);
+                if (footprint > largestFootprint)
+                {
+                    largest = candidates[i];
+                    largestFootprint = footprint;
+                }
+            }
+            valid.Add(largest);
+        }
+
         return valid.ToArray();
+    }
+
+    static float MeasurePrefabFootprint(GameObject prefab)
+    {
+        if (prefab == null)
+            return 0f;
+
+        float maxFootprint = 0f;
+        foreach (var meshFilter in prefab.GetComponentsInChildren<MeshFilter>(true))
+        {
+            if (meshFilter.sharedMesh == null)
+                continue;
+
+            Vector3 scaledSize = Vector3.Scale(meshFilter.sharedMesh.bounds.size, GetHierarchyScale(meshFilter.transform));
+            maxFootprint = Mathf.Max(maxFootprint, Mathf.Max(scaledSize.x, scaledSize.z));
+        }
+
+        if (maxFootprint > 0.001f)
+            return maxFootprint;
+
+        if (!Application.isPlaying)
+            return 0f;
+
+        GameObject instance = Instantiate(prefab);
+        try
+        {
+            return MeasureRockFootprint(instance);
+        }
+        finally
+        {
+            Destroy(instance);
+        }
+    }
+
+    static Vector3 GetHierarchyScale(Transform transform)
+    {
+        Vector3 scale = transform.localScale;
+        Transform parent = transform.parent;
+        while (parent != null)
+        {
+            scale = Vector3.Scale(scale, parent.localScale);
+            parent = parent.parent;
+        }
+
+        return scale;
     }
 
     static bool TryGetRockVisualPrefab(Object entry, out GameObject prefab)
@@ -382,13 +461,12 @@ public class SpawnManager : MonoBehaviour
             EditorUtility.SetDirty(this);
             return;
         }
-
-        var repaired = new List<GameObject>();
         var serializedObject = new SerializedObject(this);
         SerializedProperty arrayProperty = serializedObject.FindProperty("rockVisuals");
         if (arrayProperty == null || !arrayProperty.isArray)
             return;
 
+        var repaired = new List<GameObject>();
         bool changed = false;
         for (int i = 0; i < arrayProperty.arraySize; i++)
         {
@@ -442,7 +520,7 @@ public class SpawnManager : MonoBehaviour
         }
     }
 
-    static GameObject[] LoadAllKnownRockVisuals()
+    GameObject[] LoadAllKnownRockVisuals()
     {
         var loaded = new List<GameObject>();
         foreach (var path in KnownRockVisualPaths)
@@ -451,6 +529,7 @@ public class SpawnManager : MonoBehaviour
             if (prefab != null && !loaded.Contains(prefab))
                 loaded.Add(prefab);
         }
+
         return loaded.ToArray();
     }
 #endif

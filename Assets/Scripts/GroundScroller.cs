@@ -11,6 +11,8 @@ public class GroundScroller : MonoBehaviour
     [SerializeField] private float worldScrollSpeed = 5f;                      // World units/sec for props (trees, rocks via MoveDown)
 
     public float WorldSpeed => worldScrollSpeed;
+
+    public float PropScrollSpeed(float multiplier) => worldScrollSpeed * multiplier;
     public Vector3 WorldMoveDirection
     {
         get

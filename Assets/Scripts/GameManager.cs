@@ -21,7 +21,6 @@ public class GameManager : MonoBehaviour
     [Header("Difficulty")]
     [SerializeField] private float rampInterval = 10f;             // Seconds between difficulty bumps
     [SerializeField] private float playerSpeedIncrease = 0.75f;    // Added to the vehicle's speed each bump
-    [SerializeField] private float rockSpeedIncrease = 0.5f;       // Added to newly spawned rocks' speed each bump
     [SerializeField] private float spawnIntervalMultiplier = 0.9f; // Spawn interval shrinks by this factor each bump
 
     [Header("Lighting Transition")]
@@ -168,13 +167,13 @@ public class GameManager : MonoBehaviour
         if (currentStreak > bestStreak)
             bestStreak = currentStreak;
 
-        // Difficulty ramp: every rampInterval seconds the vehicle accelerates and the
-        // rocks spawn sooner and travel faster, so dodging gets progressively harder.
+        // Difficulty ramp: every rampInterval seconds the vehicle accelerates and rocks
+        // spawn sooner and more densely, so dodging gets progressively harder.
         if (Time.timeSinceLevelLoad >= nextRampTime)
         {
             nextRampTime += rampInterval;
             if (player != null) player.speed += playerSpeedIncrease;
-            if (spawnManager != null) spawnManager.IncreaseDifficulty(rockSpeedIncrease, spawnIntervalMultiplier);
+            if (spawnManager != null) spawnManager.IncreaseDifficulty(spawnIntervalMultiplier);
         }
 
         if (timeRemaining <= 0f)

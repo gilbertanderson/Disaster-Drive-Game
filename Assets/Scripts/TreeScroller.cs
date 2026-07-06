@@ -61,7 +61,7 @@ public class TreeScroller : MonoBehaviour
             return;
 
         moveDirection = grassScroller.WorldMoveDirection;
-        speed = grassScroller.WorldSpeed * treeSpeedMultiplier;
+        speed = grassScroller.PropScrollSpeed(treeSpeedMultiplier);
     }
 
     void UpdateBottomThreshold()
