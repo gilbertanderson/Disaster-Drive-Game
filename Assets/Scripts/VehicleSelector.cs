@@ -130,6 +130,9 @@ public class VehicleSelector : MonoBehaviour
         if (string.IsNullOrWhiteSpace(rawName))
             return "Vehicle";
 
+        if (TryGetCustomDisplayName(rawName, out string customName))
+            return customName;
+
         string name = rawName;
         if (name.StartsWith("Veh_"))
             name = name.Substring(4);
@@ -150,6 +153,36 @@ public class VehicleSelector : MonoBehaviour
 
         name = TrimTrailingColorToken(name.Trim());
         return LimitToWordCount(name, 2);
+    }
+
+    static bool TryGetCustomDisplayName(string rawName, out string displayName)
+    {
+        switch (rawName)
+        {
+            case "Off-road vehicle":
+                displayName = "Humvee";
+                return true;
+            case "Prefab_K-131":
+                displayName = "Jeep";
+                return true;
+            case "Veh_Armor_Car_01":
+                displayName = "Tank";
+                return true;
+            default:
+                displayName = null;
+                return false;
+        }
+    }
+
+    static float GetVehicleScaleMultiplier(string rawName)
+    {
+        switch (rawName)
+        {
+            case "Veh_Armor_Car_01":
+                return 1.5f;
+            default:
+                return 1f;
+        }
     }
 
     static string TrimTrailingColorToken(string name)
@@ -234,7 +267,7 @@ public class VehicleSelector : MonoBehaviour
             if (footprint > 0.001f)
             {
                 float scaleFactor = target / footprint;
-                visual.transform.localScale *= scaleFactor;
+                visual.transform.localScale *= scaleFactor * GetVehicleScaleMultiplier(visual.name);
             }
             visual.SetActive(wasActive);
         }
@@ -251,6 +284,26 @@ public class VehicleSelector : MonoBehaviour
             bounds.Encapsulate(renderers[i].bounds);
 
         return Mathf.Max(bounds.size.x, bounds.size.z);
+    }
+
+    public float GetVehicleFootprint(string visualObjectName)
+    {
+        if (vehicleVisuals == null || string.IsNullOrEmpty(visualObjectName))
+            return 0f;
+
+        foreach (var visual in vehicleVisuals)
+        {
+            if (visual == null || visual.name != visualObjectName)
+                continue;
+
+            bool wasActive = visual.activeSelf;
+            visual.SetActive(true);
+            float footprint = MeasureFootprint(visual);
+            visual.SetActive(wasActive);
+            return footprint;
+        }
+
+        return 0f;
     }
 
     // Imported vehicle prefabs ship with different pivots; align each model's ground center

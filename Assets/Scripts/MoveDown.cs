@@ -123,7 +123,6 @@ public class MoveDown : MonoBehaviour
         {
             if (!hitPlayer && gameManager != null)
                 gameManager.OnRockDodged();
-            SpawnDestroyFx();
             Destroy(gameObject);
         }
     }
@@ -170,8 +169,7 @@ public class MoveDown : MonoBehaviour
         Destroy(gameObject);
     }
 
-    // Rubble burst + crush sound, scaled down to roughly this rock's own footprint so the
-    // effect doesn't dwarf a small rock (used both off-screen and on player-hit destruction).
+    // Rubble burst + crush sound on player-hit destruction, scaled to this rock's footprint.
     private void SpawnDestroyFx()
     {
         if (crushClip != null)
