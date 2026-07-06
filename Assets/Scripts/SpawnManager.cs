@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -10,7 +11,6 @@ public class SpawnManager : MonoBehaviour
     public GameObject[] obstacles;                // Gameplay shell prefab(s); rockVisuals swaps the mesh at spawn
 
     public float spawnX = 7.0f;                   // Travel-axis spawn line near the top of the field
-    public float spawnY = 0.6f;                   // Height the rocks sit at above the ground
     public string wallsParentName = "Walls";      // Parent whose children mark the lateral (Z) bounds
     public float lateralPadding = 0.5f;           // Keep spawns a little inside the walls so rocks don't clip them
     public int maxObstacles = 5;                  // Cap on how many rocks may exist at once
@@ -23,10 +23,13 @@ public class SpawnManager : MonoBehaviour
 
     [Header("Rock Variety")]
     [SerializeField] private GameObject[] rockVisuals;  // Mesh prefabs swapped onto the shell (PolyOne, JC, etc.)
-    [SerializeField] private Vector2 rockScaleRange = new Vector2(1.0f, 1.4f);  // Random size multiplier per rock
+    [SerializeField] private Vector2 rockScaleRange = new Vector2(1.3f, 1.4f);  // Random size multiplier per rock
     [SerializeField] private Vector2 rockSpeedJitter = new Vector2(-1f, 2f);    // Random speed offset per rock
     [SerializeField] private float rockSpeedMultiplier = 2.25f;                  // Match decorative trees so rocks travel at the same world speed
     [SerializeField] private float minRockFootprint;  // 0 = auto-detect from convertible at runtime
+    [SerializeField] private float minRockHeight = 1.8f;                         // Minimum world-space visual height after scaling
+    [SerializeField] private float rockGroundBurialFraction = 0.2f;              // Fraction of rock height below the road surface
+    [SerializeField] private float groundLevelY;                                 // 0 = auto-detect from Ground / GroundScroller at runtime
 
     private static readonly string[] KnownRockVisualPaths =
     {
@@ -52,6 +55,7 @@ public class SpawnManager : MonoBehaviour
     private GameManager gameManager;              // Rocks only flow while the game is active
     private GroundScroller groundScroller;        // Used to sync rock movement with the decorative trees
     private GameObject[] validRockVisuals;        // Cached, spawn-safe prefab list
+    private float cachedGroundLevelY;             // Road surface Y used for burial alignment
 
     void OnValidate()
     {
@@ -70,9 +74,34 @@ public class SpawnManager : MonoBehaviour
         currentInterval = obstacleSpawnInterval;
         gameManager = FindAnyObjectByType<GameManager>();
         groundScroller = FindAnyObjectByType<GroundScroller>();
+        CacheGroundLevelY();
         FindWallRange();
         CacheMinRockFootprint();
         StartCoroutine(SpawnLoop());
+    }
+
+    void CacheGroundLevelY()
+    {
+        if (groundLevelY > 0.001f)
+        {
+            cachedGroundLevelY = groundLevelY;
+            return;
+        }
+
+        var ground = GameObject.Find("Ground");
+        if (ground != null)
+        {
+            cachedGroundLevelY = ground.transform.position.y;
+            return;
+        }
+
+        if (groundScroller != null)
+        {
+            cachedGroundLevelY = groundScroller.transform.position.y;
+            return;
+        }
+
+        cachedGroundLevelY = 0.06f;
     }
 
     void CacheMinRockFootprint()
@@ -119,7 +148,7 @@ public class SpawnManager : MonoBehaviour
         if (obstacles == null || obstacles.Length == 0)
             return;
 
-        if (FindObjectsByType<MoveDown>(FindObjectsInactive.Exclude).Length >= maxObstacles)
+        if (MoveDown.ActiveRockCount >= maxObstacles)
             return;
 
         try
@@ -136,7 +165,7 @@ public class SpawnManager : MonoBehaviour
     {
         float sizeMultiplier = Random.Range(rockScaleRange.x, rockScaleRange.y);
         float randomZ = Random.Range(minZ, maxZ);
-        Vector3 spawnPos = new Vector3(spawnX, spawnY * sizeMultiplier, randomZ);
+        Vector3 spawnPos = new Vector3(spawnX, cachedGroundLevelY, randomZ);
 
         GameObject rock;
         GameObject visual = null;
@@ -158,12 +187,15 @@ public class SpawnManager : MonoBehaviour
 
         rock.transform.localScale *= sizeMultiplier;
         EnforceMinimumRockFootprint(rock);
+        EnforceMinimumRockHeight(rock);
 
         if (visual != null)
         {
             AlignVisualToGround(visual, rock);
             FitSphereColliderToVisual(rock, visual);
         }
+
+        ConfigureRockShadows(rock);
 
         MoveDown mover = rock.GetComponentInChildren<MoveDown>();
         if (mover != null)
@@ -243,6 +275,29 @@ public class SpawnManager : MonoBehaviour
         float footprint = MeasureRockFootprint(rock);
         if (footprint > 0.001f && footprint < minRockFootprint)
             rock.transform.localScale *= minRockFootprint / footprint;
+    }
+
+    static float MeasureRockHeight(GameObject rock)
+    {
+        var renderers = rock.GetComponentsInChildren<Renderer>();
+        if (renderers.Length == 0)
+            return 0f;
+
+        Bounds bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
+
+        return bounds.size.y;
+    }
+
+    void EnforceMinimumRockHeight(GameObject rock)
+    {
+        if (minRockHeight <= 0.001f)
+            return;
+
+        float height = MeasureRockHeight(rock);
+        if (height > 0.001f && height < minRockHeight)
+            rock.transform.localScale *= minRockHeight / height;
     }
 
     bool HasUsableRockVisuals()
@@ -410,7 +465,17 @@ public class SpawnManager : MonoBehaviour
         for (int i = 1; i < renderers.Length; i++)
             bounds.Encapsulate(renderers[i].bounds);
 
-        visual.transform.position += Vector3.up * (rock.transform.position.y - bounds.min.y);
+        float targetBottomY = cachedGroundLevelY - rockGroundBurialFraction * bounds.size.y;
+        rock.transform.position += Vector3.up * (targetBottomY - bounds.min.y);
+    }
+
+    static void ConfigureRockShadows(GameObject rock)
+    {
+        foreach (var renderer in rock.GetComponentsInChildren<Renderer>())
+        {
+            renderer.shadowCastingMode = ShadowCastingMode.On;
+            renderer.receiveShadows = true;
+        }
     }
 
     void FitSphereColliderToVisual(GameObject rock, GameObject visual)
@@ -433,26 +498,12 @@ public class SpawnManager : MonoBehaviour
         collider.radius = maxExtent / uniformScale;
     }
 
-    // Read the side walls so spawns land between them (matches the clamp the rocks use).
     void FindWallRange()
     {
-        GameObject wallsParent = GameObject.Find(wallsParentName);
-        if (wallsParent == null || wallsParent.transform.childCount < 2)
-            return;                               // Keep the default range if the walls can't be found
+        if (WallBoundsUtility.TryGetPaddedRange(wallsParentName, transform.position, lateralPadding, out minZ, out maxZ))
+            return;
 
-        float lowZ = float.NegativeInfinity;      // Highest inner face on the low-Z side
-        float highZ = float.PositiveInfinity;     // Lowest inner face on the high-Z side
-
-        foreach (Transform wall in wallsParent.transform)
-        {
-            float halfDepth = wall.localScale.z * 0.5f;
-            if (wall.position.z < transform.position.z)        // Wall on the low-Z side of the field
-                lowZ = Mathf.Max(lowZ, wall.position.z + halfDepth);
-            else                                               // Wall on the high-Z side
-                highZ = Mathf.Min(highZ, wall.position.z - halfDepth);
-        }
-
-        minZ = lowZ + lateralPadding;
-        maxZ = highZ - lateralPadding;
+        minZ = -5.0f;
+        maxZ = 10.0f;
     }
 }

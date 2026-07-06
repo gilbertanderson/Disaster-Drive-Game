@@ -31,6 +31,8 @@ public class MoveDown : MonoBehaviour
     private GameManager gameManager;  // Rocks travel while the world is animating (active run or exit drive)
     [SerializeField] private float nearMissDistance = 2f;  // Lateral (Z) gap that still counts as a close dodge
 
+    public static int ActiveRockCount { get; private set; }
+
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
@@ -64,24 +66,21 @@ public class MoveDown : MonoBehaviour
 
         // Cache the Z range between the side walls' inner faces so a sideways
         // collision can't shove the rock out of the play field.
-        GameObject wallsParent = GameObject.Find(wallsParentName);
-        if (wallsParent != null && wallsParent.transform.childCount >= 2)
+        if (WallBoundsUtility.TryGetPaddedRange(wallsParentName, spawnPosition, wallPadding, out float lowZ, out float highZ))
         {
-            float lowZ = float.NegativeInfinity;   // Highest inner face on the low-Z side
-            float highZ = float.PositiveInfinity;  // Lowest inner face on the high-Z side
-
-            foreach (Transform wall in wallsParent.transform)
-            {
-                float halfDepth = wall.localScale.z * 0.5f;
-                if (wall.position.z < spawnPosition.z)              // Wall on the low-Z side of the field
-                    lowZ = Mathf.Max(lowZ, wall.position.z + halfDepth);
-                else                                               // Wall on the high-Z side
-                    highZ = Mathf.Min(highZ, wall.position.z - halfDepth);
-            }
-
-            minZ = lowZ + wallPadding;
-            maxZ = highZ - wallPadding;
+            minZ = lowZ;
+            maxZ = highZ;
         }
+    }
+
+    void OnEnable()
+    {
+        ActiveRockCount++;
+    }
+
+    void OnDisable()
+    {
+        ActiveRockCount = Mathf.Max(0, ActiveRockCount - 1);
     }
 
     // FixedUpdate is the correct place for Rigidbody physics work

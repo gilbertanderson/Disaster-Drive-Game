@@ -241,6 +241,45 @@ public class VehicleExitTests
         Object.DestroyImmediate(rockObject);
     }
 
+    [Test]
+    public void MoveDown_AwardsNearMissInsideLateralGap()
+    {
+        var nearMissManagerObject = new GameObject("NearMissGameManager");
+        var nearMissManager = nearMissManagerObject.AddComponent<GameManager>();
+        SetPrivateProperty(nearMissManager, "IsGameActive", true);
+        SetPrivateProperty(nearMissManager, "IsPaused", false);
+        SetPrivateField(nearMissManager, "timeRemaining", 10f);
+        SetPrivateField(nearMissManager, "lastNearMissTime", -10f);
+
+        var playerObject = new GameObject("Player");
+        playerObject.transform.position = new Vector3(0f, 0f, 0f);
+
+        var rockObject = new GameObject("Rock");
+        var rb = rockObject.AddComponent<Rigidbody>();
+        rb.useGravity = false;
+        var mover = rockObject.AddComponent<MoveDown>();
+        var cameraObject = new GameObject("Camera");
+        mover.gameCamera = cameraObject.AddComponent<Camera>();
+        SetPrivateField(mover, "gameManager", nearMissManager);
+        SetPrivateField(mover, "objectRb", rb);
+        SetPrivateField(mover, "moveDirection", Vector3.right);
+        SetPrivateField(mover, "playerTransform", playerObject.transform);
+        SetPrivateField(mover, "nearMissDistance", 2f);
+        SetPrivateField(mover, "nearMissChecked", false);
+        SetPrivateField(mover, "hitPlayer", false);
+        rb.position = new Vector3(2f, 0f, 1f);
+
+        typeof(MoveDown).GetMethod("TryAwardNearMiss", BindingFlags.Instance | BindingFlags.NonPublic)
+            .Invoke(mover, null);
+
+        Assert.That((float)GetPrivateField(nearMissManager, "timeRemaining"), Is.EqualTo(12f).Within(0.001f));
+
+        Object.DestroyImmediate(cameraObject);
+        Object.DestroyImmediate(rockObject);
+        Object.DestroyImmediate(playerObject);
+        Object.DestroyImmediate(nearMissManagerObject);
+    }
+
     private static void InvokeFixedUpdate(MoveDown mover)
     {
         typeof(MoveDown).GetMethod("FixedUpdate", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)

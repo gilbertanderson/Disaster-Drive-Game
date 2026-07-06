@@ -205,30 +205,14 @@ public class PlayerController : MonoBehaviour
         if (minZ > maxZ) minZ = maxZ = 0.5f * (regionMinZ + regionMaxZ);
     }
 
-    // Scan the children of the "Walls" object and record the Z range between the two
-    // walls' inner faces. Runs once at Start since the walls don't move.
     void FindWallBounds()
     {
-        GameObject wallsParent = GameObject.Find(wallsParentName);
-        if (wallsParent == null || wallsParent.transform.childCount < 2)
-            return;                                                 // Leave the bounds unbounded if we can't find the walls
+        var faces = WallBoundsUtility.GetInnerFaces(wallsParentName, transform.position);
+        if (!faces.Found)
+            return;
 
-        float lowZ = float.NegativeInfinity;                        // Highest inner face on the low-Z side
-        float highZ = float.PositiveInfinity;                       // Lowest inner face on the high-Z side
-        Vector3 center = transform.position;
-
-        foreach (Transform wall in wallsParent.transform)
-        {
-            float halfDepth = wall.localScale.z * 0.5f;
-            if (wall.position.z < center.z)                          // Wall sits on the low-Z side of the field
-                lowZ = Mathf.Max(lowZ, wall.position.z + halfDepth);
-            else                                                    // Wall sits on the high-Z side
-                highZ = Mathf.Min(highZ, wall.position.z - halfDepth);
-        }
-
-        // Store the raw inner faces; padding and the vehicle's half-size are applied in UpdateBounds.
-        wallMinZ = lowZ;
-        wallMaxZ = highZ;
+        wallMinZ = faces.LowZ;
+        wallMaxZ = faces.HighZ;
     }
 
     private void OnCollisionEnter(Collision collision)

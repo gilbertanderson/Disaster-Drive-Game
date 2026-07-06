@@ -21,8 +21,9 @@ The project uses the new Input System, URP-compatible lighting, and keyboard-dri
 2. On the start screen, pick a vehicle with **&lt;** / **&gt;** (or **A** / **D**).
 3. Click **Drive** to begin a run.
 4. Steer with **WASD** or **arrow keys**; avoid rocks (each hit costs time).
-5. Press **Esc** to pause (credits appear in the top-right of the pause overlay).
-6. When time runs out, the vehicle drives off screen, then the game over panel appears — click **Retry** to reload.
+5. Skim past rocks without hitting for a **+2s** near-miss bonus (with sound feedback).
+6. Press **Esc** to pause (credits appear in the top-right of the pause overlay).
+7. When time runs out, the vehicle drives off screen, then the game over panel appears — click **Retry** to reload.
 
 ## Building a Player
 The playable scene is already listed in build settings.
@@ -33,22 +34,39 @@ The playable scene is already listed in build settings.
 4. Click **Build** or **Build And Run**.
 5. For distribution, use the platform-specific player settings under **Edit → Project Settings → Player** (company name, product name, icons, resolution).
 
-No custom pre-build scripts or Netlify/CI pipeline are configured — builds are produced from the Unity Editor.
+No custom pre-build scripts or CI pipeline are configured — builds are produced from the Unity Editor.
+
+## Course Submission (Project 4)
+Submit all three items required by the rubric:
+
+1. **Unity package** — Assets → Export Package → include `Assets/`, `ProjectSettings/`, and `Packages/manifest.json` (exclude `Library/`).
+2. **Build folder** — standalone player from **File → Build Profiles**.
+3. **Reflection** — [`PROJECT_4_REFLECTION.md`](PROJECT_4_REFLECTION.md)
+
+Optional supporting docs: [`DESIGN_DEVIATIONS.md`](DESIGN_DEVIATIONS.md), [`PROJECT_4_RUBRIC.md`](PROJECT_4_RUBRIC.md).
 
 ## Running Tests
-Edit Mode tests live in `Assets/Tests/`.
+Edit Mode tests live in `Assets/Tests/` (**25+ tests** across 4 files).
 
 1. Open **Window → General → Test Runner**.
 2. Select the **EditMode** tab.
-3. Run **VehicleSelectorTests** and **VehicleExitTests**.
+3. Run all tests in:
+   - `VehicleSelectorTests`
+   - `VehicleExitTests`
+   - `GameManagerGameplayTests`
+   - `GroundScrollerTests`
 
-Tests cover vehicle selection, dirt emitter placement, and game-over exit state (`IsWorldAnimating`, off-screen drive).
+Tests cover vehicle selection, dirt emitters, game-over exit drive, near-miss scoring, pause, leaderboard, ground scroll gating, and core gameplay rules.
+
+Unity MCP can also run Edit Mode tests when the Editor is connected.
 
 ## Key Features
 - Vehicle selection screen with live model switching (choice saved via `PlayerPrefs`).
 - Rear dirt particle emitters aligned to each vehicle's rear geometry.
 - Camera-based screen bounds with wall clamping.
 - Endless runner scroll (ground, trees, rocks) with difficulty ramping.
+- Live run UI: wave number, dodge streak, low-time timer warning.
+- Near-miss bonus with sound and `+2s` popup.
 - Game-over exit: vehicle drives off screen while the world keeps animating, then everything stops.
 - Camera shake on rock impacts (screen-plane jitter).
 - Start / pause / game-over flow managed by `GameManager`.
@@ -62,18 +80,20 @@ The `VehicleSelector` component:
 - keeps dirt particles in local simulation space so velocities respect emitter orientation
 
 ## Important Files
-- `Assets/Scripts/GameManager.cs` — timer, pause, game over, scoring
+- `Assets/Scripts/GameManager.cs` — timer, pause, game over, scoring, audio
 - `Assets/Scripts/PlayerController.cs` — movement, bounds, exit drive
 - `Assets/Scripts/VehicleSelector.cs` — vehicle picker and dirt emitters
 - `Assets/Scripts/GroundScroller.cs` / `TreeScroller.cs` — world scroll
-- `Assets/Tests/VehicleSelectorTests.cs` / `VehicleExitTests.cs`
+- `Assets/Scripts/WallBoundsUtility.cs` — shared side-wall range math
+- `Assets/Tests/` — Edit Mode test suite
 - `Assets/Scenes/My Game.unity` — main playable scene
-- `PROJECT_REFLECTION.md` — course reflection and design notes
+- `PROJECT_REFLECTION.md` / `PROJECT_4_REFLECTION.md` — course reflections
 - `STORYBOOK.md` — component behavior reference for AI agents
 
 ## Notes for Developers
 - `VehicleSelector` depends on `GameManager` to gate selection input and emitter playback.
 - `IsWorldAnimating` keeps scrollers and dirt spray running during the post-game-over vehicle exit.
+- `MoveDown.ActiveRockCount` tracks live rocks for spawn cap checks.
 - If you add vehicle prefabs, keep emitter positions behind the fitted collider's rear face.
 - Avoid editing generated folders (`Library/`, `Temp/`, `Logs/`).
 - Unity MCP is available in this project for editor automation and test runs.
