@@ -116,12 +116,24 @@ public class SpawnManager : MonoBehaviour
 
     void SpawnObstacle()
     {
-        if (obstacles.Length == 0)
+        if (obstacles == null || obstacles.Length == 0)
             return;
 
         if (FindObjectsByType<MoveDown>(FindObjectsInactive.Exclude).Length >= maxObstacles)
             return;
 
+        try
+        {
+            SpawnObstacleInternal();
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"SpawnManager failed to spawn a rock: {ex.Message}", this);
+        }
+    }
+
+    void SpawnObstacleInternal()
+    {
         float sizeMultiplier = Random.Range(rockScaleRange.x, rockScaleRange.y);
         float randomZ = Random.Range(minZ, maxZ);
         Vector3 spawnPos = new Vector3(spawnX, spawnY * sizeMultiplier, randomZ);
@@ -165,22 +177,19 @@ public class SpawnManager : MonoBehaviour
 
     GameObject ApplyRandomVisual(GameObject rock)
     {
-        for (int i = rock.transform.childCount - 1; i >= 0; i--)
-            Destroy(rock.transform.GetChild(i).gameObject);
-
         GameObject visualPrefab = PickRandomRockVisual();
         if (visualPrefab == null)
-            return null;
+            return GetRockVisual(rock);
 
-        GameObject visual;
-        try
+        GameObject visual = TryInstantiateVisual(visualPrefab, rock.transform);
+        if (visual == null)
+            return GetRockVisual(rock);
+
+        for (int i = rock.transform.childCount - 1; i >= 0; i--)
         {
-            visual = Instantiate(visualPrefab, rock.transform);
-        }
-        catch (System.InvalidCastException ex)
-        {
-            Debug.LogWarning($"SpawnManager skipped invalid rock visual '{visualPrefab.name}': {ex.Message}", this);
-            return null;
+            GameObject child = rock.transform.GetChild(i).gameObject;
+            if (child != visual)
+                Destroy(child);
         }
 
         Vector3 prefabLocalPos = visual.transform.localPosition;
@@ -191,6 +200,19 @@ public class SpawnManager : MonoBehaviour
             childCollider.enabled = false;
 
         return visual;
+    }
+
+    GameObject TryInstantiateVisual(GameObject visualPrefab, Transform parent)
+    {
+        try
+        {
+            return Instantiate(visualPrefab, parent);
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning($"SpawnManager skipped invalid rock visual '{visualPrefab.name}': {ex.Message}", this);
+            return null;
+        }
     }
 
     static GameObject GetRockVisual(GameObject rock)

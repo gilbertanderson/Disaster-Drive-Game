@@ -64,6 +64,52 @@ public class VehicleExitTests
     }
 
     [Test]
+    public void ExitDriveTick_DoesNotCompleteOnFirstFrameAtDefaultPosition()
+    {
+        var playerObject = new GameObject("Player");
+        var rb = playerObject.AddComponent<Rigidbody>();
+        var collider = playerObject.AddComponent<BoxCollider>();
+        collider.size = new Vector3(2f, 2f, 4f);
+        var controller = playerObject.AddComponent<PlayerController>();
+
+        var cameraObject = new GameObject("GameCamera");
+        var camera = cameraObject.AddComponent<Camera>();
+        camera.transform.position = new Vector3(0f, 16f, 2.5f);
+        camera.transform.rotation = Quaternion.Euler(90f, 0f, -90f);
+
+        var visual = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        visual.transform.SetParent(playerObject.transform, false);
+        visual.transform.localScale = new Vector3(2f, 1.5f, 4f);
+
+        SetPrivateField(controller, "playerRb", rb);
+        SetPrivateField(controller, "playerCollider", collider);
+        SetPrivateField(controller, "gameManager", gameManager);
+        controller.gameCamera = camera;
+        controller.speed = 10f;
+        rb.position = new Vector3(-6f, 0.45f, 2.4f);
+
+        SetPrivateProperty(gameManager, "IsGameActive", false);
+        SetPrivateProperty(gameManager, "IsVehicleExiting", true);
+        SetPrivateProperty(gameManager, "IsPaused", false);
+
+        controller.BeginExitDrive();
+        InvokeFixedUpdate(controller);
+
+        Assert.IsTrue((bool)GetPrivateField(controller, "isExiting"));
+        Assert.IsTrue(playerObject.activeSelf);
+
+        Object.DestroyImmediate(visual);
+        Object.DestroyImmediate(cameraObject);
+        Object.DestroyImmediate(playerObject);
+    }
+
+    private static void InvokeFixedUpdate(PlayerController controller)
+    {
+        typeof(PlayerController).GetMethod("FixedUpdate", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+            .Invoke(controller, null);
+    }
+
+    [Test]
     public void BeginExitDrive_SetsExitingAndOpposesDownScreenDirection()
     {
         var playerObject = new GameObject("Player");

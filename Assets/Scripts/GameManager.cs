@@ -481,6 +481,8 @@ public class GameManager : MonoBehaviour
         }
         if (musicSource != null) musicSource.volume = menuMusicVolume;
         if (spawnManager != null) spawnManager.StopSpawning();
+        if (player == null)
+            player = FindAnyObjectByType<PlayerController>();
         if (player != null)
         {
             IsVehicleExiting = true;
