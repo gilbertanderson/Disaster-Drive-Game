@@ -37,6 +37,7 @@ public class PlayerController : MonoBehaviour
     private GameManager gameManager;          // Notified when the vehicle hits a rock
     private Vector2 movementInput;            // Latest input value read each frame
     private bool isExiting;
+    private bool exitViaBottom;
     private float exitStartTime;
     private Vector3 exitDirection;
     private float knockbackUntil = float.NegativeInfinity;  // While Time.time is below this, the crash shove owns the velocity
@@ -135,12 +136,13 @@ public class PlayerController : MonoBehaviour
         playerRb.MovePosition(targetPosition);     // Move via physics so collisions are still respected
     }
 
-    public void BeginExitDrive()
+    public void BeginExitDrive(bool exitViaBottom = false)
     {
         isExiting = true;
+        this.exitViaBottom = exitViaBottom;
         exitStartTime = Time.time;
         ResolveGameCamera();
-        exitDirection = ComputeScreenForward();
+        exitDirection = exitViaBottom ? -ComputeScreenForward() : ComputeScreenForward();
     }
 
     // Rebinds movement to the given key set. Called by GameManager when the
@@ -233,7 +235,10 @@ public class PlayerController : MonoBehaviour
 
         Bounds b = GetExitBounds();
         float halfAlong = Mathf.Abs(exitDirection.x) * b.extents.x + Mathf.Abs(exitDirection.z) * b.extents.z;
-        float threshold = ScreenEdgeUtility.TopAlongTravel(gameCamera, transform.position.y, exitDirection) + exitOffScreenMargin;
+        float threshold = (exitViaBottom
+            ? ScreenEdgeUtility.BottomAlongTravel(gameCamera, transform.position.y, exitDirection)
+            : ScreenEdgeUtility.TopAlongTravel(gameCamera, transform.position.y, exitDirection))
+            + exitOffScreenMargin;
         if (Vector3.Dot(b.center, exitDirection) - halfAlong > threshold)
         {
             isExiting = false;

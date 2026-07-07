@@ -310,11 +310,11 @@ public class GameManager : MonoBehaviour
         if (IsTwoPlayerMode)
             StartCoroutine(ShowEliminationBanner(index));
 
-        // Someone is still driving: this vehicle exits while the run continues.
-        BeginPlayerExit(index);
+        // Someone is still driving: this vehicle is out while the run continues.
+        BeginPlayerExit(index, exitViaBottom: true);
     }
 
-    void BeginPlayerExit(int index)
+    void BeginPlayerExit(int index, bool exitViaBottom = false)
     {
         if (exitStarted[index])
             return;
@@ -326,7 +326,7 @@ public class GameManager : MonoBehaviour
         exitStarted[index] = true;
         exitingVehicles++;
         IsVehicleExiting = true;
-        p.BeginExitDrive();
+        p.BeginExitDrive(exitViaBottom);
     }
 
     private const float SunsetPoint = 1f / 3f; // Fraction of the transition where evening gives way to sunset
