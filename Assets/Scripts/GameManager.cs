@@ -21,7 +21,6 @@ public class GameManager : MonoBehaviour
     [Header("Difficulty")]
     [SerializeField] private float rampInterval = 10f;             // Seconds between difficulty bumps
     [SerializeField] private float playerSpeedIncrease = 0.75f;    // Added to the vehicle's speed each bump
-    [SerializeField] private float rockSpeedIncrease = 0.5f;       // Added to newly spawned rocks' speed each bump
     [SerializeField] private float spawnIntervalMultiplier = 0.9f; // Spawn interval shrinks by this factor each bump
 
     [Header("Lighting Transition")]
@@ -54,15 +53,25 @@ public class GameManager : MonoBehaviour
     [SerializeField] private GameObject newBestText;     // "NEW BEST!" banner, shown when the record is beaten
     [SerializeField] private TMP_Text penaltyPopupText;  // "-5s" / "+2s" popup for hit penalties and near-miss bonuses
     [SerializeField] private TMP_Text musicButtonLabel;  // Pause overlay button label ("MUSIC: ON/OFF")
+    [SerializeField] private TMP_Text runStatsText;      // Live wave and dodge streak during a run
+    [SerializeField] private TMP_Text controlsHintText;  // Short controls reminder on the start screen
+    [SerializeField] private float lowTimeWarningThreshold = 10f;
+    [SerializeField] private Color lowTimeWarningColor = new Color(1f, 0.55f, 0.2f);
 
     [Header("Impact Feedback")]
     [SerializeField] private AudioClip impactClip;         // Honk played when the vehicle hits a rock
     [SerializeField] private GameObject dustEffectPrefab;  // Dust burst spawned at the point of impact
     [SerializeField] private CameraShake cameraShake;
 
+    [Header("Camera")]
+    [SerializeField] private GameplayCameraDirector cameraDirector;
+
     [Header("Audio")]
     [SerializeField] private AudioSource musicSource;      // Looping background music
     [SerializeField] private AudioClip clickClip;          // UI button click
+    [SerializeField] private AudioClip nearMissClip;       // Short reward chirp on a close dodge
+    [SerializeField] private float nearMissVolume = 0.5f;
+    [SerializeField] private float nearMissPitch = 1.4f;
     [SerializeField] private float menuMusicVolume = 0.3f; // Music volume on the start/game over screens
     [SerializeField] private float playMusicVolume = 0.6f; // Music volume during a run
 
@@ -96,6 +105,7 @@ public class GameManager : MonoBehaviour
     private Coroutine startPanelHideRoutine;
     private Coroutine gameOverShowRoutine;
     private Coroutine pausePanelRoutine;
+    private Coroutine startGameRoutine;
 
     void Start()
     {
@@ -110,6 +120,12 @@ public class GameManager : MonoBehaviour
             cameraShake = Camera.main != null ? Camera.main.GetComponent<CameraShake>() : null;
             if (cameraShake == null)
                 cameraShake = FindAnyObjectByType<CameraShake>();
+        }
+        if (cameraDirector == null)
+        {
+            cameraDirector = Camera.main != null ? Camera.main.GetComponent<GameplayCameraDirector>() : null;
+            if (cameraDirector == null)
+                cameraDirector = FindAnyObjectByType<GameplayCameraDirector>();
         }
 
         if (sunLight == null)
@@ -138,6 +154,7 @@ public class GameManager : MonoBehaviour
         }
         UpdateMusicButtonLabel();
         UpdateTimerDisplay();
+        UpdateControlsHint();
     }
 
     void Update()
@@ -153,18 +170,20 @@ public class GameManager : MonoBehaviour
         timeRemaining -= Time.deltaTime;
         displayedTimer = Mathf.Lerp(displayedTimer, timeRemaining, Time.deltaTime * 8f);
         UpdateTimerDisplay();
+        UpdateRunStatsDisplay();
+        UpdateLowTimeWarning();
 
         float currentStreak = Time.timeSinceLevelLoad - lastHitTime;
         if (currentStreak > bestStreak)
             bestStreak = currentStreak;
 
-        // Difficulty ramp: every rampInterval seconds the vehicle accelerates and the
-        // rocks spawn sooner and travel faster, so dodging gets progressively harder.
+        // Difficulty ramp: every rampInterval seconds the vehicle accelerates and rocks
+        // spawn sooner and more densely, so dodging gets progressively harder.
         if (Time.timeSinceLevelLoad >= nextRampTime)
         {
             nextRampTime += rampInterval;
             if (player != null) player.speed += playerSpeedIncrease;
-            if (spawnManager != null) spawnManager.IncreaseDifficulty(rockSpeedIncrease, spawnIntervalMultiplier);
+            if (spawnManager != null) spawnManager.IncreaseDifficulty(spawnIntervalMultiplier);
         }
 
         if (timeRemaining <= 0f)
@@ -234,6 +253,8 @@ public class GameManager : MonoBehaviour
             startPanelHideRoutine = StartCoroutine(UIPanelTransition.Hide(startPanel));
         }
         if (musicSource != null) musicSource.volume = playMusicVolume;
+        if (cameraDirector != null)
+            cameraDirector.StartIntroSequence();
     }
 
     // Wired to the game over screen's Retry button: back to the start screen.
@@ -316,8 +337,26 @@ public class GameManager : MonoBehaviour
 
         lastNearMissTime = Time.timeSinceLevelLoad;
         timeRemaining += nearMissBonus;
+        PlayNearMissSound();
         StartCoroutine(BonusFeedback());
         UpdateTimerDisplay();
+    }
+
+    void PlayNearMissSound()
+    {
+        if (nearMissClip == null)
+            return;
+
+        Vector3 position = player != null ? player.transform.position : transform.position;
+        var oneShotObject = new GameObject("NearMissSFX");
+        oneShotObject.transform.position = position;
+        var source = oneShotObject.AddComponent<AudioSource>();
+        source.clip = nearMissClip;
+        source.volume = nearMissVolume;
+        source.pitch = nearMissPitch;
+        source.spatialBlend = 0f;
+        source.Play();
+        Destroy(oneShotObject, nearMissClip.length / Mathf.Max(nearMissPitch, 0.01f) + 0.1f);
     }
 
     public void OnRockDodged()
@@ -368,6 +407,49 @@ public class GameManager : MonoBehaviour
     {
         if (timerText != null)
             timerText.text = "Time: " + Mathf.CeilToInt(Mathf.Max(displayedTimer, 0f));
+    }
+
+    void UpdateRunStatsDisplay()
+    {
+        if (runStatsText == null)
+            return;
+
+        if (!IsGameActive || IsPaused)
+        {
+            runStatsText.text = string.Empty;
+            return;
+        }
+
+        int wave = GetCurrentWave();
+        float streak = Time.timeSinceLevelLoad - lastHitTime;
+        runStatsText.text = "Wave: " + wave + "  Streak: " + Mathf.FloorToInt(streak) + "s";
+    }
+
+    int GetCurrentWave()
+    {
+        if (!IsGameActive)
+            return 1;
+
+        return Mathf.Max(1, Mathf.FloorToInt((Time.timeSinceLevelLoad - gameStartTime) / rampInterval) + 1);
+    }
+
+    void UpdateLowTimeWarning()
+    {
+        if (timerText == null || !IsGameActive || IsPaused || timeRemaining > lowTimeWarningThreshold)
+            return;
+
+        bool showingPenalty = penaltyPopupText != null && penaltyPopupText.gameObject.activeSelf;
+        if (showingPenalty)
+            return;
+
+        float pulse = 0.5f + 0.5f * Mathf.Sin(Time.time * 8f);
+        timerText.color = Color.Lerp(timerDefaultColor, lowTimeWarningColor, pulse);
+    }
+
+    void UpdateControlsHint()
+    {
+        if (controlsHintText != null)
+            controlsHintText.text = "Dodge Obstacles\nWASD steer\nEsc pause";
     }
 
     void UpdateMusicButtonLabel()
@@ -481,6 +563,8 @@ public class GameManager : MonoBehaviour
         }
         if (musicSource != null) musicSource.volume = menuMusicVolume;
         if (spawnManager != null) spawnManager.StopSpawning();
+        if (player == null)
+            player = FindAnyObjectByType<PlayerController>();
         if (player != null)
         {
             IsVehicleExiting = true;

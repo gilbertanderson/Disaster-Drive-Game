@@ -21,6 +21,29 @@ public class VehicleExitTests
     }
 
     [Test]
+    public void ActiveRockCount_ResetsOnSubsystemRegistration()
+    {
+        var rock = new GameObject("Rock");
+        rock.AddComponent<Rigidbody>().useGravity = false;
+        rock.AddComponent<MoveDown>();
+        Assert.That(MoveDown.ActiveRockCount, Is.EqualTo(1));
+
+        Object.DestroyImmediate(rock);
+        Assert.That(MoveDown.ActiveRockCount, Is.EqualTo(0));
+
+        rock = new GameObject("Rock2");
+        rock.AddComponent<Rigidbody>().useGravity = false;
+        rock.AddComponent<MoveDown>();
+        Assert.That(MoveDown.ActiveRockCount, Is.EqualTo(1));
+
+        typeof(MoveDown).GetMethod("ResetActiveRockCount", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, null);
+        Assert.That(MoveDown.ActiveRockCount, Is.EqualTo(0));
+
+        Object.DestroyImmediate(rock);
+    }
+
+    [Test]
     public void IsWorldAnimating_TrueWhileVehicleExitingAfterGameOver()
     {
         SetPrivateProperty(gameManager, "IsGameActive", false);
@@ -61,6 +84,129 @@ public class VehicleExitTests
 
         Assert.Greater(top, bottom);
         Object.DestroyImmediate(cameraObject);
+    }
+
+    [Test]
+    public void BeginExitDrive_DoesNotThrowWhenCameraUnresolved()
+    {
+        var playerObject = new GameObject("Player");
+        var rb = playerObject.AddComponent<Rigidbody>();
+        var collider = playerObject.AddComponent<BoxCollider>();
+        var controller = playerObject.AddComponent<PlayerController>();
+
+        SetPrivateField(controller, "playerRb", rb);
+        SetPrivateField(controller, "playerCollider", collider);
+        controller.gameCamera = null;
+
+        Assert.DoesNotThrow(() => controller.BeginExitDrive());
+        Assert.IsTrue((bool)GetPrivateField(controller, "isExiting"));
+
+        Object.DestroyImmediate(playerObject);
+    }
+
+    [Test]
+    public void GetExitBounds_IgnoresParticleRenderers()
+    {
+        var playerObject = new GameObject("Player");
+        var rb = playerObject.AddComponent<Rigidbody>();
+        var collider = playerObject.AddComponent<BoxCollider>();
+        collider.size = new Vector3(2f, 2f, 4f);
+        var controller = playerObject.AddComponent<PlayerController>();
+
+        var visual = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        visual.transform.SetParent(playerObject.transform, false);
+        visual.transform.localScale = new Vector3(2f, 1.5f, 4f);
+
+        var emitterObject = new GameObject("DirtEmitter");
+        emitterObject.transform.SetParent(playerObject.transform, false);
+        emitterObject.transform.localPosition = new Vector3(0f, 0f, -20f);
+        emitterObject.AddComponent<ParticleSystem>();
+
+        SetPrivateField(controller, "playerRb", rb);
+        SetPrivateField(controller, "playerCollider", collider);
+        rb.position = new Vector3(0f, 0.5f, 0f);
+
+        var bounds = InvokeGetExitBounds(controller);
+
+        Assert.That(bounds.size.z, Is.LessThan(10f),
+            "Exit bounds should come from the vehicle mesh, not distant particle emitters.");
+
+        Object.DestroyImmediate(emitterObject);
+        Object.DestroyImmediate(visual);
+        Object.DestroyImmediate(playerObject);
+    }
+
+    [Test]
+    public void GetExitBounds_FallsBackToColliderWhenNoMeshRenderers()
+    {
+        var playerObject = new GameObject("Player");
+        var rb = playerObject.AddComponent<Rigidbody>();
+        var collider = playerObject.AddComponent<BoxCollider>();
+        collider.size = new Vector3(2f, 2f, 4f);
+        var controller = playerObject.AddComponent<PlayerController>();
+
+        SetPrivateField(controller, "playerRb", rb);
+        SetPrivateField(controller, "playerCollider", collider);
+        rb.position = new Vector3(1f, 0.5f, 2f);
+
+        var bounds = InvokeGetExitBounds(controller);
+
+        Assert.That(bounds.center, Is.EqualTo(collider.bounds.center).Using(Vector3EqualityComparer.Instance));
+        Assert.That(bounds.size, Is.EqualTo(collider.bounds.size).Using(Vector3EqualityComparer.Instance));
+
+        Object.DestroyImmediate(playerObject);
+    }
+
+    private static Bounds InvokeGetExitBounds(PlayerController controller)
+    {
+        return (Bounds)typeof(PlayerController).GetMethod("GetExitBounds", BindingFlags.Instance | BindingFlags.NonPublic)
+            .Invoke(controller, null);
+    }
+
+    [Test]
+    public void ExitDriveTick_DoesNotCompleteOnFirstFrameAtDefaultPosition()
+    {
+        var playerObject = new GameObject("Player");
+        var rb = playerObject.AddComponent<Rigidbody>();
+        var collider = playerObject.AddComponent<BoxCollider>();
+        collider.size = new Vector3(2f, 2f, 4f);
+        var controller = playerObject.AddComponent<PlayerController>();
+
+        var cameraObject = new GameObject("GameCamera");
+        var camera = cameraObject.AddComponent<Camera>();
+        camera.transform.position = new Vector3(0f, 16f, 2.5f);
+        camera.transform.rotation = Quaternion.Euler(90f, 0f, -90f);
+
+        var visual = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        visual.transform.SetParent(playerObject.transform, false);
+        visual.transform.localScale = new Vector3(2f, 1.5f, 4f);
+
+        SetPrivateField(controller, "playerRb", rb);
+        SetPrivateField(controller, "playerCollider", collider);
+        SetPrivateField(controller, "gameManager", gameManager);
+        controller.gameCamera = camera;
+        controller.speed = 10f;
+        rb.position = new Vector3(-6f, 0.45f, 2.4f);
+
+        SetPrivateProperty(gameManager, "IsGameActive", false);
+        SetPrivateProperty(gameManager, "IsVehicleExiting", true);
+        SetPrivateProperty(gameManager, "IsPaused", false);
+
+        controller.BeginExitDrive();
+        InvokeFixedUpdate(controller);
+
+        Assert.IsTrue((bool)GetPrivateField(controller, "isExiting"));
+        Assert.IsTrue(playerObject.activeSelf);
+
+        Object.DestroyImmediate(visual);
+        Object.DestroyImmediate(cameraObject);
+        Object.DestroyImmediate(playerObject);
+    }
+
+    private static void InvokeFixedUpdate(PlayerController controller)
+    {
+        typeof(PlayerController).GetMethod("FixedUpdate", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+            .Invoke(controller, null);
     }
 
     [Test]
@@ -193,6 +339,45 @@ public class VehicleExitTests
 
         Object.DestroyImmediate(cameraObject);
         Object.DestroyImmediate(rockObject);
+    }
+
+    [Test]
+    public void MoveDown_AwardsNearMissInsideLateralGap()
+    {
+        var nearMissManagerObject = new GameObject("NearMissGameManager");
+        var nearMissManager = nearMissManagerObject.AddComponent<GameManager>();
+        SetPrivateProperty(nearMissManager, "IsGameActive", true);
+        SetPrivateProperty(nearMissManager, "IsPaused", false);
+        SetPrivateField(nearMissManager, "timeRemaining", 10f);
+        SetPrivateField(nearMissManager, "lastNearMissTime", -10f);
+
+        var playerObject = new GameObject("Player");
+        playerObject.transform.position = new Vector3(0f, 0f, 0f);
+
+        var rockObject = new GameObject("Rock");
+        var rb = rockObject.AddComponent<Rigidbody>();
+        rb.useGravity = false;
+        var mover = rockObject.AddComponent<MoveDown>();
+        var cameraObject = new GameObject("Camera");
+        mover.gameCamera = cameraObject.AddComponent<Camera>();
+        SetPrivateField(mover, "gameManager", nearMissManager);
+        SetPrivateField(mover, "objectRb", rb);
+        SetPrivateField(mover, "moveDirection", Vector3.right);
+        SetPrivateField(mover, "playerTransform", playerObject.transform);
+        SetPrivateField(mover, "nearMissDistance", 2f);
+        SetPrivateField(mover, "nearMissChecked", false);
+        SetPrivateField(mover, "hitPlayer", false);
+        rb.position = new Vector3(2f, 0f, 1f);
+
+        typeof(MoveDown).GetMethod("TryAwardNearMiss", BindingFlags.Instance | BindingFlags.NonPublic)
+            .Invoke(mover, null);
+
+        Assert.That((float)GetPrivateField(nearMissManager, "timeRemaining"), Is.EqualTo(12f).Within(0.001f));
+
+        Object.DestroyImmediate(cameraObject);
+        Object.DestroyImmediate(rockObject);
+        Object.DestroyImmediate(playerObject);
+        Object.DestroyImmediate(nearMissManagerObject);
     }
 
     private static void InvokeFixedUpdate(MoveDown mover)

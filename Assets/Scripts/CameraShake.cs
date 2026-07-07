@@ -15,6 +15,26 @@ public class CameraShake : MonoBehaviour
         restLocalPos = transform.localPosition;
     }
 
+    public void SyncRestPosition()
+    {
+        if (shakeRoutine != null)
+        {
+            StopCoroutine(shakeRoutine);
+            shakeRoutine = null;
+        }
+        restLocalPos = transform.localPosition;
+    }
+
+    public void StopAndReset()
+    {
+        if (shakeRoutine != null)
+        {
+            StopCoroutine(shakeRoutine);
+            shakeRoutine = null;
+        }
+        transform.localPosition = restLocalPos;
+    }
+
     public void Shake()
     {
         if (shakeRoutine != null)

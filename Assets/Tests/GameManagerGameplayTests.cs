@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
@@ -70,6 +71,50 @@ public class GameManagerGameplayTests
 
         Assert.That(GetPrivateField<int>(gameManager, "hitsTaken"), Is.EqualTo(1));
         Assert.That(GetPrivateField<float>(gameManager, "timeRemaining"), Is.EqualTo(25f).Within(0.001f));
+    }
+
+    [Test]
+    public void TogglePause_SetsTimeScaleWhileActive()
+    {
+        SetPrivateProperty(gameManager, "IsGameActive", true);
+        SetPrivateProperty(gameManager, "IsPaused", false);
+        Time.timeScale = 1f;
+
+        gameManager.TogglePause();
+        Assert.IsTrue(gameManager.IsPaused);
+        Assert.That(Time.timeScale, Is.EqualTo(0f).Within(0.001f));
+
+        gameManager.TogglePause();
+        Assert.IsFalse(gameManager.IsPaused);
+        Assert.That(Time.timeScale, Is.EqualTo(1f).Within(0.001f));
+    }
+
+    [Test]
+    public void InsertScore_PersistsTopFiveLeaderboard()
+    {
+        PlayerPrefs.DeleteAll();
+        InvokePrivate(gameManager, "InsertScore", 42f);
+        InvokePrivate(gameManager, "InsertScore", 55f);
+
+        var scores = InvokePrivate<List<float>>(gameManager, "LoadLeaderboard");
+        Assert.That(scores.Count, Is.EqualTo(2));
+        Assert.That(scores[0], Is.EqualTo(55f).Within(0.001f));
+        Assert.That(scores[1], Is.EqualTo(42f).Within(0.001f));
+        PlayerPrefs.DeleteAll();
+    }
+
+    private static T InvokePrivate<T>(object target, string methodName, params object[] args)
+    {
+        var method = target.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(method, $"Could not find method '{methodName}' on {target.GetType()}.");
+        return (T)method.Invoke(target, args);
+    }
+
+    private static object InvokePrivate(object target, string methodName, params object[] args)
+    {
+        var method = target.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(method, $"Could not find method '{methodName}' on {target.GetType()}.");
+        return method.Invoke(target, args);
     }
 
     private static T GetPrivateField<T>(object target, string fieldName)

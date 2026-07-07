@@ -121,23 +121,12 @@ public class TreeSpawnManager : MonoBehaviour
 
     void FindWallRange()
     {
-        GameObject wallsParent = GameObject.Find(wallsParentName);
-        if (wallsParent == null || wallsParent.transform.childCount < 2)
+        var faces = WallBoundsUtility.GetInnerFaces(wallsParentName, transform.position);
+        if (!faces.Found)
             return;
 
-        float lowZ = float.NegativeInfinity;
-        float highZ = float.PositiveInfinity;
-        foreach (Transform wall in wallsParent.transform)
-        {
-            float halfDepth = wall.localScale.z * 0.5f;
-            if (wall.position.z < transform.position.z)
-                lowZ = Mathf.Max(lowZ, wall.position.z + halfDepth);
-            else
-                highZ = Mathf.Min(highZ, wall.position.z - halfDepth);
-        }
-
-        wallInnerLowZ = lowZ;
-        wallInnerHighZ = highZ;
+        wallInnerLowZ = faces.LowZ;
+        wallInnerHighZ = faces.HighZ;
     }
 
     void ConstrainTreeOutsideWalls(GameObject tree)

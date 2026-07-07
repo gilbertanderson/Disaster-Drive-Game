@@ -179,7 +179,7 @@ public class VehicleSelector : MonoBehaviour
         switch (rawName)
         {
             case "Veh_Armor_Car_01":
-                return 1.5f;
+                return 1.35f;
             default:
                 return 1f;
         }

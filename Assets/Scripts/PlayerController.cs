@@ -15,6 +15,7 @@ public class PlayerController : MonoBehaviour
     public float wallPadding = 0.5f;          // Keeps the vehicle's body from clipping into a wall
     [SerializeField] private float exitSpeedMultiplier = 1.5f;
     [SerializeField] private float exitOffScreenMargin = 0.5f;
+    [SerializeField] private float exitMinDuration = 0.75f;
     public float movementDeadzone = 0.25f;    // Ignore tiny input noise for dirt emitter direction
 
     private Rigidbody playerRb;               // Cached Rigidbody for physics-based movement
@@ -22,6 +23,7 @@ public class PlayerController : MonoBehaviour
     private GameManager gameManager;          // Notified when the vehicle hits a rock
     private Vector2 movementInput;            // Latest input value read each frame
     private bool isExiting;
+    private float exitStartTime;
     private Vector3 exitDirection;
     public Vector3 CurrentMovementDirection { get; private set; }
     private float wallMinZ = float.NegativeInfinity;  // Inner face of the low-Z wall (unbounded until found)
@@ -67,6 +69,11 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
+        if (gameCamera == null)
+            ResolveGameCamera();
+        if (gameCamera == null)
+            return;
+
         float horizontalInput = movementInput.x;
         float verticalInput = movementInput.y;
 
@@ -95,11 +102,22 @@ public class PlayerController : MonoBehaviour
     public void BeginExitDrive()
     {
         isExiting = true;
+        exitStartTime = Time.time;
+        ResolveGameCamera();
         exitDirection = ComputeScreenForward();
+    }
+
+    void ResolveGameCamera()
+    {
+        if (gameCamera == null)
+            gameCamera = Camera.main;
     }
 
     Vector3 ComputeScreenForward()
     {
+        if (gameCamera == null)
+            return Vector3.forward;
+
         Vector3 screenForward = gameCamera.transform.forward;
         screenForward.y = 0f;
         if (screenForward.sqrMagnitude < 0.001f)                   // Top-down camera looks straight down
@@ -111,13 +129,10 @@ public class PlayerController : MonoBehaviour
 
     void ExitDriveTick()
     {
+        ResolveGameCamera();
         if (gameCamera == null)
         {
-            isExiting = false;
-            if (gameManager != null)
-                gameManager.OnVehicleExitComplete();
-            else
-                enabled = false;
+            Debug.LogError("PlayerController exit drive is missing a game camera.", this);
             return;
         }
 
@@ -125,7 +140,10 @@ public class PlayerController : MonoBehaviour
         playerRb.angularVelocity = Vector3.zero;
         playerRb.MovePosition(playerRb.position + exitDirection * (speed * exitSpeedMultiplier) * Time.fixedDeltaTime);
 
-        Bounds b = playerCollider != null ? playerCollider.bounds : new Bounds(playerRb.position, Vector3.zero);
+        if (Time.time - exitStartTime < exitMinDuration)
+            return;
+
+        Bounds b = GetExitBounds();
         float halfAlong = Mathf.Abs(exitDirection.x) * b.extents.x + Mathf.Abs(exitDirection.z) * b.extents.z;
         float threshold = ScreenEdgeUtility.TopAlongTravel(gameCamera, transform.position.y, exitDirection) + exitOffScreenMargin;
         if (Vector3.Dot(b.center, exitDirection) - halfAlong > threshold)
@@ -136,6 +154,40 @@ public class PlayerController : MonoBehaviour
             else
                 enabled = false;
         }
+    }
+
+    Bounds GetExitBounds()
+    {
+        bool hasBounds = false;
+        Bounds bounds = default;
+
+        foreach (var renderer in GetComponentsInChildren<Renderer>(false))
+        {
+            if (renderer is ParticleSystemRenderer || renderer is TrailRenderer)
+                continue;
+            if (!renderer.enabled)
+                continue;
+
+            if (!hasBounds)
+            {
+                bounds = renderer.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(renderer.bounds);
+            }
+        }
+
+        if (hasBounds)
+            return bounds;
+
+        if (playerCollider != null)
+            return playerCollider.bounds;
+
+        const float minExtent = 0.5f;
+        Vector3 center = playerRb != null ? playerRb.position : transform.position;
+        return new Bounds(center, new Vector3(minExtent * 2f, minExtent, minExtent * 2f));
     }
 
     // Recalculate the world-space limits that keep the player contrained on screen
@@ -183,30 +235,14 @@ public class PlayerController : MonoBehaviour
         if (minZ > maxZ) minZ = maxZ = 0.5f * (regionMinZ + regionMaxZ);
     }
 
-    // Scan the children of the "Walls" object and record the Z range between the two
-    // walls' inner faces. Runs once at Start since the walls don't move.
     void FindWallBounds()
     {
-        GameObject wallsParent = GameObject.Find(wallsParentName);
-        if (wallsParent == null || wallsParent.transform.childCount < 2)
-            return;                                                 // Leave the bounds unbounded if we can't find the walls
+        var faces = WallBoundsUtility.GetInnerFaces(wallsParentName, transform.position);
+        if (!faces.Found)
+            return;
 
-        float lowZ = float.NegativeInfinity;                        // Highest inner face on the low-Z side
-        float highZ = float.PositiveInfinity;                       // Lowest inner face on the high-Z side
-        Vector3 center = transform.position;
-
-        foreach (Transform wall in wallsParent.transform)
-        {
-            float halfDepth = wall.localScale.z * 0.5f;
-            if (wall.position.z < center.z)                          // Wall sits on the low-Z side of the field
-                lowZ = Mathf.Max(lowZ, wall.position.z + halfDepth);
-            else                                                    // Wall sits on the high-Z side
-                highZ = Mathf.Min(highZ, wall.position.z - halfDepth);
-        }
-
-        // Store the raw inner faces; padding and the vehicle's half-size are applied in UpdateBounds.
-        wallMinZ = lowZ;
-        wallMaxZ = highZ;
+        wallMinZ = faces.LowZ;
+        wallMaxZ = faces.HighZ;
     }
 
     private void OnCollisionEnter(Collision collision)
