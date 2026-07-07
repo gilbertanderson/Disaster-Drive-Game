@@ -63,6 +63,9 @@ public class GameManager : MonoBehaviour
     [SerializeField] private GameObject dustEffectPrefab;  // Dust burst spawned at the point of impact
     [SerializeField] private CameraShake cameraShake;
 
+    [Header("Camera")]
+    [SerializeField] private GameplayCameraDirector cameraDirector;
+
     [Header("Audio")]
     [SerializeField] private AudioSource musicSource;      // Looping background music
     [SerializeField] private AudioClip clickClip;          // UI button click
@@ -102,6 +105,7 @@ public class GameManager : MonoBehaviour
     private Coroutine startPanelHideRoutine;
     private Coroutine gameOverShowRoutine;
     private Coroutine pausePanelRoutine;
+    private Coroutine startGameRoutine;
 
     void Start()
     {
@@ -116,6 +120,12 @@ public class GameManager : MonoBehaviour
             cameraShake = Camera.main != null ? Camera.main.GetComponent<CameraShake>() : null;
             if (cameraShake == null)
                 cameraShake = FindAnyObjectByType<CameraShake>();
+        }
+        if (cameraDirector == null)
+        {
+            cameraDirector = Camera.main != null ? Camera.main.GetComponent<GameplayCameraDirector>() : null;
+            if (cameraDirector == null)
+                cameraDirector = FindAnyObjectByType<GameplayCameraDirector>();
         }
 
         if (sunLight == null)
@@ -243,6 +253,8 @@ public class GameManager : MonoBehaviour
             startPanelHideRoutine = StartCoroutine(UIPanelTransition.Hide(startPanel));
         }
         if (musicSource != null) musicSource.volume = playMusicVolume;
+        if (cameraDirector != null)
+            cameraDirector.StartIntroSequence();
     }
 
     // Wired to the game over screen's Retry button: back to the start screen.
