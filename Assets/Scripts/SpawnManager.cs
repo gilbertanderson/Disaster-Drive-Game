@@ -33,12 +33,12 @@ public class SpawnManager : MonoBehaviour
 
     private static readonly string[] KnownRockVisualPaths =
     {
-        "Assets/Resources/RockVisuals/RockVisual_Boulder.prefab",
-        "Assets/Resources/RockVisuals/RockVisual_Rocks_02.prefab",
-        "Assets/Resources/RockVisuals/RockVisual_Rocks_03.prefab",
-        "Assets/Resources/RockVisuals/RockVisual_Rocks_04.prefab",
-        "Assets/Resources/RockVisuals/RockVisual_Rocks_05.prefab",
-        "Assets/Resources/RockVisuals/RockVisual_Rocks_09.prefab",
+        "Assets/Prefabs/RockVisuals/RockVisual_Boulder.prefab",
+        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_02.prefab",
+        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_03.prefab",
+        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_04.prefab",
+        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_05.prefab",
+        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_09.prefab",
     };
 
     private float currentInterval;                // Live spawn interval; shrinks as difficulty ramps
@@ -449,21 +449,8 @@ public class SpawnManager : MonoBehaviour
 #if UNITY_EDITOR
         return AssetDatabase.LoadAssetAtPath<GameObject>(path);
 #else
-        return LoadRockVisualFromResources(path);
+        return null;
 #endif
-    }
-
-    static GameObject LoadRockVisualFromResources(string assetPath)
-    {
-        const string resourcesRoot = "Assets/Resources/";
-        if (!assetPath.StartsWith(resourcesRoot))
-            return null;
-
-        string resourcePath = assetPath.Substring(resourcesRoot.Length);
-        if (resourcePath.EndsWith(".prefab"))
-            resourcePath = resourcePath.Substring(0, resourcePath.Length - ".prefab".Length);
-
-        return Resources.Load<GameObject>(resourcePath);
     }
 
     void EnsureRockVisualReferences()
