@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
 using TMPro;
@@ -11,17 +12,27 @@ public class VehicleSelectorTests
     private ParticleSystem emitter;
     private GameObject vehicleVisual;
     private GameObject vehicleVisual2;
+    private readonly List<GameObject> disabledSceneGrounds = new();
 
     [SetUp]
     public void SetUp()
     {
         PlayerPrefs.DeleteAll();
 
+        foreach (var sceneGround in Object.FindObjectsByType<GroundScroller>(FindObjectsSortMode.None))
+        {
+            if (!sceneGround.gameObject.activeSelf)
+                continue;
+
+            sceneGround.gameObject.SetActive(false);
+            disabledSceneGrounds.Add(sceneGround.gameObject);
+        }
+
         groundGameObject = new GameObject("GroundScroller");
         groundGameObject.AddComponent<GroundScroller>();
 
         selectorGameObject = new GameObject("VehicleSelector");
-        selector = selectorGameObject.AddComponent<VehicleSelector>();
+        selectorGameObject.SetActive(false);
         selectorGameObject.AddComponent<BoxCollider>();
 
         vehicleVisual = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -38,8 +49,12 @@ public class VehicleSelectorTests
         emitterGameObject.transform.parent = selectorGameObject.transform;
         emitter = emitterGameObject.AddComponent<ParticleSystem>();
 
+        selector = selectorGameObject.AddComponent<VehicleSelector>();
         SetPrivateField(selector, "dirtEmitters", new ParticleSystem[] { emitter });
         SetPrivateField(selector, "vehicleVisuals", new GameObject[] { vehicleVisual, vehicleVisual2 });
+        SetPrivateField(selector, "groundScroller", groundGameObject.GetComponent<GroundScroller>());
+
+        selectorGameObject.SetActive(true);
     }
 
     [TearDown]
@@ -48,6 +63,14 @@ public class VehicleSelectorTests
         PlayerPrefs.DeleteAll();
         Object.DestroyImmediate(groundGameObject);
         Object.DestroyImmediate(selectorGameObject);
+
+        foreach (var sceneGround in disabledSceneGrounds)
+        {
+            if (sceneGround != null)
+                sceneGround.SetActive(true);
+        }
+
+        disabledSceneGrounds.Clear();
     }
 
     [Test]
@@ -71,10 +94,14 @@ public class VehicleSelectorTests
     [Test]
     public void Awake_AlignsEmitterToRoadMovementDirection()
     {
-        InvokePrivateMethod("Awake");
-        // SetUp creates a real GroundScroller, so FindAnyObjectByType finds it and
-        // VehicleSelector uses its WorldMoveDirection (Vector3.back for the default
-        // scrollDirection of (0,-1)) rather than falling back to Vector3.left.
+        var scroller = groundGameObject.GetComponent<GroundScroller>();
+        SetPrivateField(scroller, "scrollDirection", new Vector2(0f, -1f));
+        SetPrivateField(selector, "groundScroller", scroller);
+
+        Assert.That(scroller.WorldMoveDirection, Is.EqualTo(Vector3.back));
+        Assert.That(GetPrivateField<GroundScroller>(selector, "groundScroller"), Is.SameAs(scroller));
+
+        InvokePrivateMethod("Apply");
         Assert.That(emitter.transform.right, Is.EqualTo(Vector3.back).Using(Vector3EqualityComparer.Instance));
     }
 
@@ -194,6 +221,13 @@ public class VehicleSelectorTests
         var field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.IsNotNull(field, $"Could not find private field '{fieldName}' on {target.GetType()}.");
         field.SetValue(target, value);
+    }
+
+    private static T GetPrivateField<T>(object target, string fieldName)
+    {
+        var field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(field, $"Could not find private field '{fieldName}' on {target.GetType()}.");
+        return (T)field.GetValue(target);
     }
 
     private void InvokePrivateMethod(string methodName)

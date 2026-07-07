@@ -26,9 +26,9 @@ public class GameplayCameraDirectorTests
 
         SetPrivateField(director, "introAnchor", anchorObject.transform);
         SetPrivateField(director, "cameraShake", cameraShake);
-        SetPrivateField(director, "introInDuration", 0.45f);
-        SetPrivateField(director, "introHoldDuration", 1.2f);
-        SetPrivateField(director, "returnDuration", 0.75f);
+        SetPrivateField(director, "introInDuration", 0.5f);
+        SetPrivateField(director, "introHoldDuration", 1.7f);
+        SetPrivateField(director, "returnDuration", 1f);
 
         director.CacheGameplayPose();
     }
@@ -44,7 +44,7 @@ public class GameplayCameraDirectorTests
     public void PlayIntroSequence_EndsAtGameplayPose()
     {
         const float step = 0.05f;
-        const float totalDuration = 3f;
+        const float totalDuration = 3.5f;
         for (float elapsed = 0f; elapsed <= totalDuration; elapsed += step)
             director.SimulateIntroStep(step);
 

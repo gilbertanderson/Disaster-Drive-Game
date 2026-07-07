@@ -34,7 +34,8 @@ public class VehicleSelector : MonoBehaviour
     void Awake()
     {
         gameManager = FindAnyObjectByType<GameManager>();
-        groundScroller = FindAnyObjectByType<GroundScroller>();
+        if (groundScroller == null)
+            groundScroller = FindAnyObjectByType<GroundScroller>();
 
         // Particle velocity must follow emitter rotation, which requires local simulation space.
         if (dirtEmitters != null)

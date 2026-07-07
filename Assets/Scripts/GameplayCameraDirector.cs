@@ -8,9 +8,9 @@ public class GameplayCameraDirector : MonoBehaviour
 
     [SerializeField] private Transform introAnchor;
     [SerializeField] private CameraShake cameraShake;
-    [SerializeField] private float introInDuration = 0.45f;
-    [SerializeField] private float introHoldDuration = 1.2f;
-    [SerializeField] private float returnDuration = 0.75f;
+    [SerializeField] private float introInDuration = 0.5f;
+    [SerializeField] private float introHoldDuration = 1.7f;
+    [SerializeField] private float returnDuration = 1f;
 
     private Vector3 gameplayPosition;
     private Quaternion gameplayRotation;

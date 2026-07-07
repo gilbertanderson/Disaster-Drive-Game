@@ -151,6 +151,12 @@ public class GameManager : MonoBehaviour
             if (cameraShake == null)
                 cameraShake = FindAnyObjectByType<CameraShake>();
         }
+        if (cameraDirector == null)
+        {
+            cameraDirector = Camera.main != null ? Camera.main.GetComponent<GameplayCameraDirector>() : null;
+            if (cameraDirector == null)
+                cameraDirector = FindAnyObjectByType<GameplayCameraDirector>();
+        }
 
         if (sunLight == null)
             sunLight = RenderSettings.sun;
@@ -398,13 +404,14 @@ public class GameManager : MonoBehaviour
         if (musicSource != null) musicSource.volume = playMusicVolume;
         if (countdownRoutine != null)
             StopCoroutine(countdownRoutine);
-        if (cameraDirector != null)
-            cameraDirector.StartIntroSequence();
         countdownRoutine = StartCoroutine(RunCountdown());
     }
 
     IEnumerator RunCountdown()
     {
+        if (cameraDirector != null)
+            cameraDirector.StartIntroSequence();
+
         string[] steps = { "3", "2", "1", "GO!" };
         if (countdownText != null)
             countdownText.gameObject.SetActive(true);
@@ -421,6 +428,12 @@ public class GameManager : MonoBehaviour
 
         if (countdownText != null)
             countdownText.gameObject.SetActive(false);
+
+        if (cameraDirector != null)
+        {
+            while (!cameraDirector.IsIntroComplete)
+                yield return null;
+        }
 
         IsGameActive = true;
         gameStartTime = Time.timeSinceLevelLoad;
