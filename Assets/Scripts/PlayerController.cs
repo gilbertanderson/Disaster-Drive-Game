@@ -69,6 +69,11 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
+        if (gameCamera == null)
+            ResolveGameCamera();
+        if (gameCamera == null)
+            return;
+
         float horizontalInput = movementInput.x;
         float verticalInput = movementInput.y;
 
@@ -98,8 +103,8 @@ public class PlayerController : MonoBehaviour
     {
         isExiting = true;
         exitStartTime = Time.time;
-        exitDirection = ComputeScreenForward();
         ResolveGameCamera();
+        exitDirection = ComputeScreenForward();
     }
 
     void ResolveGameCamera()
@@ -110,6 +115,9 @@ public class PlayerController : MonoBehaviour
 
     Vector3 ComputeScreenForward()
     {
+        if (gameCamera == null)
+            return Vector3.forward;
+
         Vector3 screenForward = gameCamera.transform.forward;
         screenForward.y = 0f;
         if (screenForward.sqrMagnitude < 0.001f)                   // Top-down camera looks straight down
@@ -150,14 +158,36 @@ public class PlayerController : MonoBehaviour
 
     Bounds GetExitBounds()
     {
-        var renderers = GetComponentsInChildren<Renderer>();
-        if (renderers.Length == 0)
-            return playerCollider != null ? playerCollider.bounds : new Bounds(playerRb.position, Vector3.zero);
+        bool hasBounds = false;
+        Bounds bounds = default;
 
-        Bounds bounds = renderers[0].bounds;
-        for (int i = 1; i < renderers.Length; i++)
-            bounds.Encapsulate(renderers[i].bounds);
-        return bounds;
+        foreach (var renderer in GetComponentsInChildren<Renderer>(false))
+        {
+            if (renderer is ParticleSystemRenderer || renderer is TrailRenderer)
+                continue;
+            if (!renderer.enabled)
+                continue;
+
+            if (!hasBounds)
+            {
+                bounds = renderer.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(renderer.bounds);
+            }
+        }
+
+        if (hasBounds)
+            return bounds;
+
+        if (playerCollider != null)
+            return playerCollider.bounds;
+
+        const float minExtent = 0.5f;
+        Vector3 center = playerRb != null ? playerRb.position : transform.position;
+        return new Bounds(center, new Vector3(minExtent * 2f, minExtent, minExtent * 2f));
     }
 
     // Recalculate the world-space limits that keep the player contrained on screen

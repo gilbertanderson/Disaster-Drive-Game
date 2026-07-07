@@ -33,12 +33,12 @@ public class SpawnManager : MonoBehaviour
 
     private static readonly string[] KnownRockVisualPaths =
     {
-        "Assets/Prefabs/RockVisuals/RockVisual_Boulder.prefab",
-        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_02.prefab",
-        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_03.prefab",
-        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_04.prefab",
-        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_05.prefab",
-        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_09.prefab",
+        "Assets/Resources/RockVisuals/RockVisual_Boulder.prefab",
+        "Assets/Resources/RockVisuals/RockVisual_Rocks_02.prefab",
+        "Assets/Resources/RockVisuals/RockVisual_Rocks_03.prefab",
+        "Assets/Resources/RockVisuals/RockVisual_Rocks_04.prefab",
+        "Assets/Resources/RockVisuals/RockVisual_Rocks_05.prefab",
+        "Assets/Resources/RockVisuals/RockVisual_Rocks_09.prefab",
     };
 
     private float currentInterval;                // Live spawn interval; shrinks as difficulty ramps
@@ -62,6 +62,7 @@ public class SpawnManager : MonoBehaviour
 #if UNITY_EDITOR
         RepairRockVisualReferences();
 #endif
+        EnsureRockVisualReferences();
         validRockVisuals = BuildValidRockVisualList();
 
         currentInterval = obstacleSpawnInterval;
@@ -448,8 +449,42 @@ public class SpawnManager : MonoBehaviour
 #if UNITY_EDITOR
         return AssetDatabase.LoadAssetAtPath<GameObject>(path);
 #else
-        return null;
+        return LoadRockVisualFromResources(path);
 #endif
+    }
+
+    static GameObject LoadRockVisualFromResources(string assetPath)
+    {
+        const string resourcesRoot = "Assets/Resources/";
+        if (!assetPath.StartsWith(resourcesRoot))
+            return null;
+
+        string resourcePath = assetPath.Substring(resourcesRoot.Length);
+        if (resourcePath.EndsWith(".prefab"))
+            resourcePath = resourcePath.Substring(0, resourcePath.Length - ".prefab".Length);
+
+        return Resources.Load<GameObject>(resourcePath);
+    }
+
+    void EnsureRockVisualReferences()
+    {
+        if (rockVisuals != null && rockVisuals.Length > 0)
+            return;
+
+        rockVisuals = LoadAllKnownRockVisuals();
+    }
+
+    static GameObject[] LoadAllKnownRockVisuals()
+    {
+        var loaded = new List<GameObject>();
+        foreach (var path in KnownRockVisualPaths)
+        {
+            var prefab = LoadRockVisualAtPath(path);
+            if (prefab != null && !loaded.Contains(prefab))
+                loaded.Add(prefab);
+        }
+
+        return loaded.ToArray();
     }
 
 #if UNITY_EDITOR
@@ -518,19 +553,6 @@ public class SpawnManager : MonoBehaviour
         {
             rockVisuals = repaired.ToArray();
         }
-    }
-
-    GameObject[] LoadAllKnownRockVisuals()
-    {
-        var loaded = new List<GameObject>();
-        foreach (var path in KnownRockVisualPaths)
-        {
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
-            if (prefab != null && !loaded.Contains(prefab))
-                loaded.Add(prefab);
-        }
-
-        return loaded.ToArray();
     }
 #endif
 

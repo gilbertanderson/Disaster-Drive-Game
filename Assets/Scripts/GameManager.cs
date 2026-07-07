@@ -437,7 +437,7 @@ public class GameManager : MonoBehaviour
     void UpdateControlsHint()
     {
         if (controlsHintText != null)
-            controlsHintText.text = "WASD steer · Esc pause · Close dodges +2s";
+            controlsHintText.text = "Dodge Obstacles\nWASD steer\nEsc pause";
     }
 
     void UpdateMusicButtonLabel()

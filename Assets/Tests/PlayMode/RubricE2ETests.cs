@@ -46,7 +46,7 @@ public class RubricE2ETests
         Assert.That(gameManager, Is.Not.Null);
         Assert.That(gameManager.IsOnStartScreen, Is.True, "Start panel should be visible on load.");
 
-        var title = Object.FindObjectsByType<TMP_Text>(FindObjectsSortMode.None)
+        var title = Object.FindObjectsByType<TMP_Text>(FindObjectsInactive.Include)
             .FirstOrDefault(t => t.text != null && t.text.Contains("DISASTER"));
         Assert.That(title, Is.Not.Null, "DISASTER title text should be on the start screen.");
 
@@ -186,6 +186,33 @@ public class RubricE2ETests
         yield return RubricE2ERecording.End();
     }
 
+    [UnityTest]
+    public IEnumerator Rubric_08b_GameOver_VehicleStaysVisibleDuringExitDrive()
+    {
+        yield return RubricE2ERecording.Begin("08b_game_over_exit_drive");
+
+        gameManager.StartGame();
+        yield return new WaitForSeconds(0.3f);
+
+        var playerObject = player.gameObject;
+        Assert.That(playerObject.activeSelf, Is.True);
+
+        InvokePrivate(gameManager, "GameOver");
+        yield return new WaitForSeconds(0.2f);
+
+        Assert.That(gameManager.IsGameActive, Is.False);
+        Assert.That(gameManager.IsVehicleExiting, Is.True);
+        Assert.That(playerObject.activeSelf, Is.True,
+            "Vehicle should remain visible while driving off-screen after game over.");
+
+        yield return new WaitForSeconds(0.5f);
+        Assert.That(playerObject.activeSelf, Is.True,
+            "Vehicle should still be visible before the minimum exit drive duration elapses.");
+
+        yield return RubricE2ERecording.CaptureForSeconds(RecordSeconds);
+        yield return RubricE2ERecording.End();
+    }
+
     // --- Criterion 2: Music & sound ---
 
     [UnityTest]
@@ -220,7 +247,7 @@ public class RubricE2ETests
 
         gameManager.StartGame();
         yield return new WaitForSeconds(2f);
-        var rock = Object.FindObjectsByType<MoveDown>(FindObjectsSortMode.None).FirstOrDefault();
+        var rock = Object.FindObjectsByType<MoveDown>(FindObjectsInactive.Include).FirstOrDefault();
         if (rock != null)
         {
             Assert.That(GetPrivateField<GameObject>(rock, "destroyEffectPrefab"), Is.Not.Null,

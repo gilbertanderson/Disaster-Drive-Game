@@ -102,6 +102,7 @@ InitTestScene*.unity*
 /[Aa]ssets/[Ss]ceneDependencyCache*
 
 # --- Project-specific ---
+Assets/_Recovery/*
 .DS_Store
 /GeneratedAssets/
 TestResults

@@ -33,6 +33,12 @@ public class MoveDown : MonoBehaviour
 
     public static int ActiveRockCount { get; private set; }
 
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetActiveRockCount()
+    {
+        ActiveRockCount = 0;
+    }
+
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
