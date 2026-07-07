@@ -49,6 +49,7 @@ public class SpawnManager : MonoBehaviour
     private GroundScroller groundScroller;        // Used to sync rock movement with the decorative trees
     private GameObject[] validRockVisuals;        // Cached, spawn-safe prefab list
     private float cachedGroundLevelY;             // Road surface Y used for burial alignment
+    private bool spawnOnHighSide;
 
     void OnValidate()
     {
@@ -154,10 +155,23 @@ public class SpawnManager : MonoBehaviour
         }
     }
 
+    float PickSpawnZ()
+    {
+        if (gameManager != null && gameManager.IsTwoPlayerMode)
+        {
+            float midZ = (minZ + maxZ) * 0.5f;
+            float z = spawnOnHighSide ? Random.Range(midZ, maxZ) : Random.Range(minZ, midZ);
+            spawnOnHighSide = !spawnOnHighSide;
+            return z;
+        }
+
+        return Random.Range(minZ, maxZ);
+    }
+
     void SpawnObstacleInternal()
     {
         float sizeMultiplier = Random.Range(rockScaleRange.x, rockScaleRange.y);
-        float randomZ = Random.Range(minZ, maxZ);
+        float randomZ = PickSpawnZ();
         Vector3 spawnPos = new Vector3(spawnX, cachedGroundLevelY, randomZ);
 
         GameObject rock;
@@ -581,9 +595,10 @@ public class SpawnManager : MonoBehaviour
             bounds.Encapsulate(renderers[i].bounds);
 
         collider.center = rock.transform.InverseTransformPoint(bounds.center);
-        float maxExtent = Mathf.Max(bounds.extents.x, bounds.extents.y, bounds.extents.z);
+        // Enclose the full AABB (max extent alone misses corners on elongated rocks).
+        float enclosingRadius = bounds.extents.magnitude * 1.08f;
         float uniformScale = Mathf.Max(rock.transform.lossyScale.x, 0.001f);
-        collider.radius = maxExtent / uniformScale;
+        collider.radius = enclosingRadius / uniformScale;
     }
 
     void FindWallRange()

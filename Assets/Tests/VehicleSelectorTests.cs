@@ -72,9 +72,10 @@ public class VehicleSelectorTests
     public void Awake_AlignsEmitterToRoadMovementDirection()
     {
         InvokePrivateMethod("Awake");
-        // Edit-mode harness does not register FindAnyObjectByType hits for GroundScroller,
-        // so VehicleSelector falls back to Vector3.left instead of WorldMoveDirection (Vector3.back).
-        Assert.That(emitter.transform.right, Is.EqualTo(Vector3.left).Using(Vector3EqualityComparer.Instance));
+        // SetUp creates a real GroundScroller, so FindAnyObjectByType finds it and
+        // VehicleSelector uses its WorldMoveDirection (Vector3.back for the default
+        // scrollDirection of (0,-1)) rather than falling back to Vector3.left.
+        Assert.That(emitter.transform.right, Is.EqualTo(Vector3.back).Using(Vector3EqualityComparer.Instance));
     }
 
     [Test]
@@ -125,6 +126,7 @@ public class VehicleSelectorTests
         Assert.That(VehicleSelector.FormatVehicleName("SM_Veh_Convertable_01"), Is.EqualTo("Convertible"));
         Assert.That(VehicleSelector.FormatVehicleName("Prefab_K-131"), Is.EqualTo("Jeep"));
         Assert.That(VehicleSelector.FormatVehicleName("Off-road vehicle"), Is.EqualTo("Humvee"));
+        Assert.That(VehicleSelector.FormatVehicleName("SURVIVAL ARMORED TRUCK 1"), Is.EqualTo("Armored Truck"));
     }
 
     [Test]
