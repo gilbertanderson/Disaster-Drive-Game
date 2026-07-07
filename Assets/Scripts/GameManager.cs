@@ -10,7 +10,6 @@ public class GameManager : MonoBehaviour
     private const string BestTimeKey = "BestTime";     // PlayerPrefs key for the longest-survival record
     private const string LeaderboardPrefix = "Leaderboard";
     private const string MusicMutedKey = "MusicMuted"; // PlayerPrefs key for the music toggle
-    private const string PlayerCountKey = "PlayerCount"; // PlayerPrefs key for the 1P/2P mode toggle
     private const int LeaderboardSize = 5;
 
     [Header("Timer")]
@@ -18,17 +17,6 @@ public class GameManager : MonoBehaviour
     [SerializeField] private float hitPenalty = 5f;   // Seconds removed when the vehicle hits a rock
     [SerializeField] private float nearMissBonus = 2f;       // Seconds added for a close dodge
     [SerializeField] private float nearMissCooldown = 1.5f;  // Minimum gap between near-miss awards
-
-    [Header("Two Player")]
-    [SerializeField] private PlayerController[] players;         // P1 (and P2) controllers; found by playerIndex if unassigned
-    [SerializeField] private GameObject player2Object;           // Player 2 vehicle hierarchy; active only in 2P mode
-    [SerializeField] private GameObject player2SelectorUI;       // P2 vehicle picker cluster on the start panel
-    [SerializeField] private TMP_Text timer2Text;                // P2 clock in the HUD (2P only)
-    [SerializeField] private TMP_Text playerCountButtonLabel;    // "1 Player" / "2 Players" toggle button label
-    [SerializeField] private float vehicleCollisionCooldown = 1f; // One penalty per bump, not per contact pair
-    [SerializeField] private float vehicleCrashRammerPenalty = 4f;
-    [SerializeField] private float vehicleCrashVictimPenalty = 2f;
-    [SerializeField] private float vehicleCrashTiePenalty = 2f;
 
     [Header("Difficulty")]
     [SerializeField] private float rampInterval = 10f;             // Seconds between difficulty bumps
@@ -63,11 +51,7 @@ public class GameManager : MonoBehaviour
     [SerializeField] private TMP_Text runTimeText;       // This playthrough's survival time, on the game over screen
     [SerializeField] private TMP_Text gameOverStatsText; // Dodges, hits, streak, and wave on the game over screen
     [SerializeField] private GameObject newBestText;     // "NEW BEST!" banner, shown when the record is beaten
-    [SerializeField] private TMP_Text penaltyPopupText;  // Legacy center popup; used as template for runtime split popups
-    [SerializeField] private TMP_Text penaltyPopupP1;
-    [SerializeField] private TMP_Text penaltyPopupP2;
-    [SerializeField] private TMP_Text countdownText;
-    [SerializeField] private TMP_Text eliminationBannerText;
+    [SerializeField] private TMP_Text penaltyPopupText;  // "-5s" / "+2s" popup for hit penalties and near-miss bonuses
     [SerializeField] private TMP_Text musicButtonLabel;  // Pause overlay button label ("MUSIC: ON/OFF")
     [SerializeField] private TMP_Text runStatsText;      // Live wave and dodge streak during a run
     [SerializeField] private TMP_Text controlsHintText;  // Short controls reminder on the start screen
@@ -76,7 +60,6 @@ public class GameManager : MonoBehaviour
 
     [Header("Impact Feedback")]
     [SerializeField] private AudioClip impactClip;         // Honk played when the vehicle hits a rock
-    [SerializeField] private AudioClip vehicleCrashClip;   // Distinct sound for vehicle-vehicle hits
     [SerializeField] private GameObject dustEffectPrefab;  // Dust burst spawned at the point of impact
     [SerializeField] private CameraShake cameraShake;
 
@@ -100,56 +83,49 @@ public class GameManager : MonoBehaviour
     public bool IsPaused { get; private set; }
     public bool IsVehicleExiting { get; private set; }
     public bool IsWorldAnimating => (IsGameActive || IsVehicleExiting) && !IsPaused;
-    public bool IsTwoPlayerMode { get; private set; }
 
     // True only while the title screen is showing (not mid-run, not game over).
     public bool IsOnStartScreen => !IsGameActive && startPanel != null && startPanel.activeInHierarchy;
 
-    private float timeRemaining;    // Player 1's clock (the only clock in 1P mode)
-    private float timeRemaining2;   // Player 2's clock (2P mode only)
+    private float timeRemaining;
     private float gameStartTime;   // Time.timeSinceLevelLoad when the Drive button was pressed
     private float nextRampTime;
     private float lightingElapsed;
     private float displayedTimer;
-    private float displayedTimer2;
     private float lastHitTime;
     private float lastNearMissTime;
-    private float lastVehicleCollisionTime = float.NegativeInfinity;
-    private readonly bool[] eliminated = new bool[2];   // Set once a player's clock expires (2P)
-    private readonly bool[] exitStarted = new bool[2];  // Guards against starting a player's exit drive twice
-    private readonly float[] survivalTime = new float[2];
-    private int exitingVehicles;   // Vehicles currently driving off screen; keeps IsVehicleExiting accurate
     private float bestStreak;
     private int rocksDodged;
     private int hitsTaken;
     private AudioSource sfxSource;
     private PlayerController player;
     private SpawnManager spawnManager;
-    private Color timerDefaultColorP1;
-    private Color timerDefaultColorP2;
-    private Color penaltyPopupDefaultColorP1;
-    private Color penaltyPopupDefaultColorP2;
-    private Coroutine countdownRoutine;
-    private Coroutine eliminationBannerRoutine;
+    private Color timerDefaultColor;
+    private Color penaltyPopupDefaultColor;
     private Coroutine startPanelHideRoutine;
     private Coroutine gameOverShowRoutine;
     private Coroutine pausePanelRoutine;
+    private Coroutine startGameRoutine;
 
     void Start()
     {
         Time.timeScale = 1f;   // A previous session may have ended while paused (timeScale 0)
         timeRemaining = startTime;
-        timeRemaining2 = startTime;
         displayedTimer = startTime;
-        displayedTimer2 = startTime;
         sfxSource = GetComponent<AudioSource>();
-        ResolvePlayers();
+        player = FindAnyObjectByType<PlayerController>();
         spawnManager = FindAnyObjectByType<SpawnManager>();
         if (cameraShake == null)
         {
             cameraShake = Camera.main != null ? Camera.main.GetComponent<CameraShake>() : null;
             if (cameraShake == null)
                 cameraShake = FindAnyObjectByType<CameraShake>();
+        }
+        if (cameraDirector == null)
+        {
+            cameraDirector = Camera.main != null ? Camera.main.GetComponent<GameplayCameraDirector>() : null;
+            if (cameraDirector == null)
+                cameraDirector = FindAnyObjectByType<GameplayCameraDirector>();
         }
 
         if (sunLight == null)
@@ -165,14 +141,9 @@ public class GameManager : MonoBehaviour
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
         if (pausePanel != null) pausePanel.SetActive(false);
         if (newBestText != null) newBestText.SetActive(false);
-        EnsureRuntimeUiRefs();
-        if (penaltyPopupP1 != null) penaltyPopupP1.gameObject.SetActive(false);
-        if (penaltyPopupP2 != null) penaltyPopupP2.gameObject.SetActive(false);
-        if (countdownText != null) countdownText.gameObject.SetActive(false);
-        if (eliminationBannerText != null) eliminationBannerText.gameObject.SetActive(false);
-        ApplyTimerThemeColors();
-        EnsureIdentityMarkers();
-        EnsureUiStyler();
+        if (penaltyPopupText != null) penaltyPopupText.gameObject.SetActive(false);
+        if (timerText != null) timerDefaultColor = timerText.color;
+        if (penaltyPopupText != null) penaltyPopupDefaultColor = penaltyPopupText.color;
 
         UpdateLeaderboardDisplay();
 
@@ -182,47 +153,8 @@ public class GameManager : MonoBehaviour
             musicSource.volume = menuMusicVolume;
         }
         UpdateMusicButtonLabel();
-        SetTwoPlayerMode(PlayerPrefs.GetInt(PlayerCountKey, 1) == 2);
-        ApplyTimerThemeColors();
         UpdateTimerDisplay();
         UpdateControlsHint();
-        RefreshVehiclePickerLabels();
-    }
-
-    // Use the serialized references when present; otherwise find every controller in
-    // the scene (Player 2 starts inactive) and order them by playerIndex.
-    void ResolvePlayers()
-    {
-        if (players == null || players.Length == 0)
-            players = FindObjectsByType<PlayerController>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-
-        System.Array.Sort(players, (a, b) =>
-        {
-            if (a == null || b == null) return a == null ? 1 : -1;
-            return a.playerIndex.CompareTo(b.playerIndex);
-        });
-
-        player = players.Length > 0 ? players[0] : null;
-    }
-
-    PlayerController GetPlayer(int index)
-    {
-        return players != null && index >= 0 && index < players.Length ? players[index] : null;
-    }
-
-    int ResolvePlayerIndex(PlayerController who)
-    {
-        if (who == null)
-            return 0;
-        return Mathf.Clamp(who.playerIndex, 0, 1);
-    }
-
-    float GetClock(int index) => index == 1 ? timeRemaining2 : timeRemaining;
-
-    void AddClock(int index, float delta)
-    {
-        if (index == 1) timeRemaining2 += delta;
-        else timeRemaining += delta;
     }
 
     void Update()
@@ -235,16 +167,8 @@ public class GameManager : MonoBehaviour
             return;
 
         UpdateLighting();
-        if (!eliminated[0])
-        {
-            timeRemaining -= Time.deltaTime;
-            displayedTimer = Mathf.Lerp(displayedTimer, timeRemaining, Time.deltaTime * 8f);
-        }
-        if (IsTwoPlayerMode && !eliminated[1])
-        {
-            timeRemaining2 -= Time.deltaTime;
-            displayedTimer2 = Mathf.Lerp(displayedTimer2, timeRemaining2, Time.deltaTime * 8f);
-        }
+        timeRemaining -= Time.deltaTime;
+        displayedTimer = Mathf.Lerp(displayedTimer, timeRemaining, Time.deltaTime * 8f);
         UpdateTimerDisplay();
         UpdateRunStatsDisplay();
         UpdateLowTimeWarning();
@@ -258,68 +182,12 @@ public class GameManager : MonoBehaviour
         if (Time.timeSinceLevelLoad >= nextRampTime)
         {
             nextRampTime += rampInterval;
-            if (players != null)
-            {
-                foreach (var p in players)
-                    if (p != null)
-                        p.speed += playerSpeedIncrease;
-            }
+            if (player != null) player.speed += playerSpeedIncrease;
             if (spawnManager != null) spawnManager.IncreaseDifficulty(spawnIntervalMultiplier);
         }
 
-        CheckClockExpirations();
-    }
-
-    // A player whose clock runs dry is eliminated; the run ends when nobody is left.
-    void CheckClockExpirations()
-    {
-        if (!IsGameActive)
-            return;
-
-        if (!eliminated[0] && timeRemaining <= 0f)
-            EliminatePlayer(0);
-        if (IsGameActive && IsTwoPlayerMode && !eliminated[1] && timeRemaining2 <= 0f)
-            EliminatePlayer(1);
-    }
-
-    void EliminatePlayer(int index)
-    {
-        if (eliminated[index])
-            return;
-
-        eliminated[index] = true;
-        survivalTime[index] = Time.timeSinceLevelLoad - gameStartTime;
-        if (index == 0) timeRemaining = 0f;
-        else timeRemaining2 = 0f;
-        UpdateTimerDisplay();
-
-        bool anyoneLeft = !eliminated[0] || (IsTwoPlayerMode && !eliminated[1]);
-        if (!anyoneLeft)
-        {
-            GameOver();   // Starts the remaining exit drives itself
-            return;
-        }
-
-        if (IsTwoPlayerMode)
-            StartCoroutine(ShowEliminationBanner(index));
-
-        // Someone is still driving: this vehicle exits while the run continues.
-        BeginPlayerExit(index);
-    }
-
-    void BeginPlayerExit(int index)
-    {
-        if (exitStarted[index])
-            return;
-
-        var p = GetPlayer(index);
-        if (p == null || !p.gameObject.activeInHierarchy)
-            return;
-
-        exitStarted[index] = true;
-        exitingVehicles++;
-        IsVehicleExiting = true;
-        p.BeginExitDrive();
+        if (timeRemaining <= 0f)
+            GameOver();
     }
 
     private const float SunsetPoint = 1f / 3f; // Fraction of the transition where evening gives way to sunset
@@ -367,28 +235,17 @@ public class GameManager : MonoBehaviour
     // Wired to the start screen's Drive button.
     public void StartGame()
     {
-        if (IsGameActive || countdownRoutine != null)
+        if (IsGameActive)
             return;
 
-        lastHitTime = Time.timeSinceLevelLoad;
+        IsGameActive = true;
+        gameStartTime = Time.timeSinceLevelLoad;
+        lastHitTime = gameStartTime;
         lastNearMissTime = -nearMissCooldown;
-        lastVehicleCollisionTime = float.NegativeInfinity;
         bestStreak = 0f;
         rocksDodged = 0;
         hitsTaken = 0;
-        timeRemaining = startTime;
-        timeRemaining2 = startTime;
-        displayedTimer = startTime;
-        displayedTimer2 = startTime;
-        for (int i = 0; i < eliminated.Length; i++)
-        {
-            eliminated[i] = false;
-            exitStarted[i] = false;
-            survivalTime[i] = 0f;
-        }
-        ReapplyVehicleStats();
-        ApplyTimerThemeColors();
-        UpdateTimerDisplay();
+        nextRampTime = gameStartTime + rampInterval;
         if (startPanel != null)
         {
             if (startPanelHideRoutine != null)
@@ -396,66 +253,8 @@ public class GameManager : MonoBehaviour
             startPanelHideRoutine = StartCoroutine(UIPanelTransition.Hide(startPanel));
         }
         if (musicSource != null) musicSource.volume = playMusicVolume;
-        if (countdownRoutine != null)
-            StopCoroutine(countdownRoutine);
         if (cameraDirector != null)
             cameraDirector.StartIntroSequence();
-        countdownRoutine = StartCoroutine(RunCountdown());
-    }
-
-    IEnumerator RunCountdown()
-    {
-        string[] steps = { "3", "2", "1", "GO!" };
-        if (countdownText != null)
-            countdownText.gameObject.SetActive(true);
-
-        foreach (string step in steps)
-        {
-            if (countdownText != null)
-            {
-                countdownText.text = step;
-                countdownText.color = step == "GO!" ? PlayerColors.BonusGreen : Color.white;
-            }
-            yield return new WaitForSeconds(0.8f);
-        }
-
-        if (countdownText != null)
-            countdownText.gameObject.SetActive(false);
-
-        IsGameActive = true;
-        gameStartTime = Time.timeSinceLevelLoad;
-        nextRampTime = gameStartTime + rampInterval;
-        countdownRoutine = null;
-    }
-
-    void ReapplyVehicleStats()
-    {
-        if (players == null)
-            return;
-
-        foreach (var p in players)
-        {
-            if (p == null)
-                continue;
-            p.ResetSpeedToBase();
-            var selector = p.GetComponent<VehicleSelector>();
-            if (selector != null)
-                selector.ReapplyStats();
-        }
-    }
-
-    void ApplyTimerThemeColors()
-    {
-        timerDefaultColorP1 = IsTwoPlayerMode ? PlayerColors.P1 : Color.white;
-        timerDefaultColorP2 = PlayerColors.P2;
-        if (timerText != null)
-            timerText.color = timerDefaultColorP1;
-        if (timer2Text != null)
-            timer2Text.color = timerDefaultColorP2;
-        if (penaltyPopupP1 != null)
-            penaltyPopupDefaultColorP1 = penaltyPopupP1.color;
-        if (penaltyPopupP2 != null)
-            penaltyPopupDefaultColorP2 = penaltyPopupP2.color;
     }
 
     // Wired to the game over screen's Retry button: back to the start screen.
@@ -494,144 +293,6 @@ public class GameManager : MonoBehaviour
         UpdateMusicButtonLabel();
     }
 
-    // Wired to the start screen's player-count toggle button.
-    public void TogglePlayerCount()
-    {
-        if (IsGameActive)
-            return;
-
-        SetTwoPlayerMode(!IsTwoPlayerMode);
-        PlayerPrefs.SetInt(PlayerCountKey, IsTwoPlayerMode ? 2 : 1);
-        PlayerPrefs.Save();
-    }
-
-    void SetTwoPlayerMode(bool twoPlayer)
-    {
-        IsTwoPlayerMode = twoPlayer;
-
-        // Player 2's vehicle stands next to Player 1 on the start screen so the
-        // second picker has something to preview. SetActive runs its Awake the
-        // first time, which loads P2's own saved vehicle choice.
-        if (player2Object != null)
-            player2Object.SetActive(twoPlayer);
-        if (player2SelectorUI != null)
-            player2SelectorUI.SetActive(twoPlayer);
-        if (timer2Text != null)
-            timer2Text.gameObject.SetActive(twoPlayer);
-        if (playerCountButtonLabel != null)
-            playerCountButtonLabel.text = twoPlayer ? "2 Players" : "1 Player";
-
-        var p1 = GetPlayer(0);
-        var p2 = GetPlayer(1);
-        if (p1 != null)
-            p1.ApplyControlScheme(twoPlayer
-                ? PlayerController.ControlScheme.WasdOnly
-                : PlayerController.ControlScheme.WasdAndArrows);
-        if (p2 != null && twoPlayer)
-            p2.ApplyControlScheme(PlayerController.ControlScheme.ArrowsAndGamepad);
-
-        // The two players may never drive the same vehicle.
-        if (twoPlayer && p1 != null && p2 != null)
-        {
-            var selector1 = p1.GetComponent<VehicleSelector>();
-            var selector2 = p2.GetComponent<VehicleSelector>();
-            if (selector1 != null && selector2 != null)
-                selector2.EnsureDistinctFrom(selector1);
-        }
-
-        ApplyTimerThemeColors();
-        UpdateTimerDisplay();
-        UpdateControlsHint();
-        RefreshVehiclePickerLabels();
-        EnsureIdentityMarkers();
-    }
-
-    void EnsureRuntimeUiRefs()
-    {
-        // Backward-compatible migration: if scene still has only one popup, repurpose it for P1 and clone P2.
-        if (penaltyPopupP1 == null)
-            penaltyPopupP1 = penaltyPopupText;
-        if (penaltyPopupP1 != null && timerText != null)
-        {
-            var p1Rt = penaltyPopupP1.rectTransform;
-            p1Rt.anchoredPosition = timerText.rectTransform.anchoredPosition + new Vector2(0f, -70f);
-        }
-
-        if (penaltyPopupP1 != null && penaltyPopupP2 == null)
-        {
-            GameObject p2Popup = Instantiate(penaltyPopupP1.gameObject, penaltyPopupP1.transform.parent);
-            p2Popup.name = "PenaltyPopupP2Runtime";
-            penaltyPopupP2 = p2Popup.GetComponent<TMP_Text>();
-            var rt = p2Popup.GetComponent<RectTransform>();
-            if (rt != null && timer2Text != null)
-                rt.anchoredPosition = timer2Text.rectTransform.anchoredPosition + new Vector2(0f, -70f);
-        }
-
-        if (countdownText == null && timerText != null)
-        {
-            GameObject go = Instantiate(timerText.gameObject, timerText.transform.parent);
-            go.name = "CountdownTextRuntime";
-            countdownText = go.GetComponent<TMP_Text>();
-            var rt = go.GetComponent<RectTransform>();
-            if (rt != null)
-            {
-                rt.anchoredPosition = new Vector2(0f, -220f);
-                rt.sizeDelta = new Vector2(500f, 140f);
-            }
-            countdownText.text = "3";
-        }
-
-        if (eliminationBannerText == null && timerText != null)
-        {
-            GameObject go = Instantiate(timerText.gameObject, timerText.transform.parent);
-            go.name = "EliminationBannerRuntime";
-            eliminationBannerText = go.GetComponent<TMP_Text>();
-            var rt = go.GetComponent<RectTransform>();
-            if (rt != null)
-            {
-                rt.anchoredPosition = new Vector2(0f, -150f);
-                rt.sizeDelta = new Vector2(900f, 100f);
-            }
-            eliminationBannerText.text = "PLAYER 1 IS OUT!";
-        }
-    }
-
-    void EnsureIdentityMarkers()
-    {
-        if (players == null)
-            return;
-
-        foreach (var p in players)
-        {
-            if (p == null)
-                continue;
-            if (p.GetComponent<PlayerIdentityMarker>() == null)
-                p.gameObject.AddComponent<PlayerIdentityMarker>();
-        }
-    }
-
-    void EnsureUiStyler()
-    {
-        if (GetComponent<TwoPlayerUIStyler>() != null)
-            return;
-
-        gameObject.AddComponent<TwoPlayerUIStyler>();
-    }
-
-    void RefreshVehiclePickerLabels()
-    {
-        if (players == null)
-            return;
-        foreach (var p in players)
-        {
-            if (p == null)
-                continue;
-            var selector = p.GetComponent<VehicleSelector>();
-            if (selector != null)
-                selector.RefreshLabel();
-        }
-    }
-
     // Added to every UI button so presses give audible feedback.
     public void PlayClick()
     {
@@ -639,93 +300,15 @@ public class GameManager : MonoBehaviour
             sfxSource.PlayOneShot(clickClip);
     }
 
-    // Called by MoveDown when a vehicle collides with a rock. The parameterless
-    // overload keeps older callers (and tests) working; it charges Player 1.
+    // Called by PlayerController when the vehicle collides with a rock.
     public void OnPlayerHit(Vector3 hitPoint)
-    {
-        OnPlayerHit(hitPoint, null);
-    }
-
-    public void OnPlayerHit(Vector3 hitPoint, PlayerController who)
     {
         if (!IsGameActive || IsPaused)
             return;
 
-        int index = ResolvePlayerIndex(who);
-        if (eliminated[index])
-            return;
-
-        AddClock(index, -hitPenalty);
+        timeRemaining -= hitPenalty;
         hitsTaken++;
         lastHitTime = Time.timeSinceLevelLoad;
-        PlayImpactFeedback(hitPoint);
-        StartCoroutine(PenaltyFeedback(index, hitPenalty));
-        UpdateTimerDisplay();
-        CheckClockExpirations();
-    }
-
-    // Called by PlayerController when the two vehicles crash into each other.
-    // Both sides of the contact report it, so a cooldown dedupes the pair (and
-    // stops a lingering scrape from double-charging). Each player loses the same
-    // penalty as a rock hit, and both get shoved apart so the Bouncy material
-    // reads as an actual bounce.
-    public void OnVehicleCollision(Vector3 hitPoint, PlayerController a, PlayerController b)
-    {
-        if (!IsGameActive || IsPaused || !IsTwoPlayerMode || a == null || b == null)
-            return;
-
-        if (eliminated[ResolvePlayerIndex(a)] || eliminated[ResolvePlayerIndex(b)])
-            return;
-
-        if (Time.time - lastVehicleCollisionTime < vehicleCollisionCooldown)
-            return;
-
-        lastVehicleCollisionTime = Time.time;
-
-        Vector3 apart = a.transform.position - b.transform.position;
-        apart.y = 0f;
-        if (apart.sqrMagnitude < 0.001f)
-            apart = Vector3.forward;
-
-        a.ApplyCrashKnockback(apart);
-        b.ApplyCrashKnockback(-apart);
-
-        int indexA = ResolvePlayerIndex(a);
-        int indexB = ResolvePlayerIndex(b);
-        float approachA = a.GetApproachSpeed(apart);
-        float approachB = b.GetApproachSpeed(-apart);
-
-        float penaltyA;
-        float penaltyB;
-        if (Mathf.Abs(approachA - approachB) <= 0.05f)
-        {
-            penaltyA = vehicleCrashTiePenalty;
-            penaltyB = vehicleCrashTiePenalty;
-        }
-        else if (approachA > approachB)
-        {
-            penaltyA = vehicleCrashRammerPenalty;
-            penaltyB = vehicleCrashVictimPenalty;
-        }
-        else
-        {
-            penaltyA = vehicleCrashVictimPenalty;
-            penaltyB = vehicleCrashRammerPenalty;
-        }
-
-        AddClock(indexA, -penaltyA);
-        AddClock(indexB, -penaltyB);
-        hitsTaken++;
-        lastHitTime = Time.timeSinceLevelLoad;
-        PlayVehicleCrashFeedback(hitPoint);
-        StartCoroutine(PenaltyFeedback(indexA, penaltyA));
-        StartCoroutine(PenaltyFeedback(indexB, penaltyB));
-        UpdateTimerDisplay();
-        CheckClockExpirations();
-    }
-
-    void PlayImpactFeedback(Vector3 hitPoint)
-    {
         if (sfxSource != null && impactClip != null)
             sfxSource.PlayOneShot(impactClip);
 
@@ -737,38 +320,14 @@ public class GameManager : MonoBehaviour
 
         if (cameraShake != null)
             cameraShake.Shake();
-    }
 
-    void PlayVehicleCrashFeedback(Vector3 hitPoint)
-    {
-        if (sfxSource != null)
-        {
-            if (vehicleCrashClip != null)
-                sfxSource.PlayOneShot(vehicleCrashClip);
-            else if (impactClip != null)
-            {
-                sfxSource.pitch = 0.7f;
-                sfxSource.PlayOneShot(impactClip);
-                sfxSource.pitch = 1f;
-            }
-        }
-
-        if (dustEffectPrefab != null)
-        {
-            GameObject dust = Instantiate(dustEffectPrefab, hitPoint, dustEffectPrefab.transform.rotation);
-            Destroy(dust, 2f);
-        }
-
-        if (cameraShake != null)
-            cameraShake.Shake();
+        StartCoroutine(PenaltyFeedback());
+        UpdateTimerDisplay();
+        if (timeRemaining <= 0f)
+            GameOver();
     }
 
     public void OnNearMiss()
-    {
-        OnNearMiss(null);
-    }
-
-    public void OnNearMiss(PlayerController who)
     {
         if (!IsGameActive || IsPaused)
             return;
@@ -776,25 +335,19 @@ public class GameManager : MonoBehaviour
         if (Time.timeSinceLevelLoad - lastNearMissTime < nearMissCooldown)
             return;
 
-        int index = ResolvePlayerIndex(who);
-        if (eliminated[index])
-            return;
-
         lastNearMissTime = Time.timeSinceLevelLoad;
-        AddClock(index, nearMissBonus);
-        PlayNearMissSound(GetPlayer(index));
-        StartCoroutine(BonusFeedback(index, nearMissBonus));
+        timeRemaining += nearMissBonus;
+        PlayNearMissSound();
+        StartCoroutine(BonusFeedback());
         UpdateTimerDisplay();
     }
 
-    void PlayNearMissSound(PlayerController dodger)
+    void PlayNearMissSound()
     {
         if (nearMissClip == null)
             return;
 
-        if (dodger == null)
-            dodger = player;
-        Vector3 position = dodger != null ? dodger.transform.position : transform.position;
+        Vector3 position = player != null ? player.transform.position : transform.position;
         var oneShotObject = new GameObject("NearMissSFX");
         oneShotObject.transform.position = position;
         var source = oneShotObject.AddComponent<AudioSource>();
@@ -815,84 +368,45 @@ public class GameManager : MonoBehaviour
     }
 
     // Flash a "-5s" popup and turn the timer red for a moment so the cost of a hit is obvious.
-    TMP_Text GetPenaltyPopup(int playerIndex) => playerIndex == 1 ? penaltyPopupP2 : penaltyPopupP1;
-
-    TMP_Text GetTimerText(int playerIndex) => playerIndex == 1 ? timer2Text : timerText;
-
-    Color GetTimerDefaultColor(int playerIndex) => playerIndex == 1 ? timerDefaultColorP2 : timerDefaultColorP1;
-
-    IEnumerator PenaltyFeedback(int playerIndex, float seconds)
+    IEnumerator PenaltyFeedback()
     {
-        var popup = GetPenaltyPopup(playerIndex);
-        var timer = GetTimerText(playerIndex);
-        if (popup != null)
+        if (penaltyPopupText != null)
         {
-            popup.text = "-" + Mathf.RoundToInt(seconds) + "s";
-            popup.color = PlayerColors.PenaltyRed;
-            popup.gameObject.SetActive(true);
+            penaltyPopupText.text = "-" + Mathf.RoundToInt(hitPenalty) + "s";
+            penaltyPopupText.color = new Color(0.95f, 0.25f, 0.2f);
+            penaltyPopupText.gameObject.SetActive(true);
         }
-        if (timer != null)
-            timer.color = PlayerColors.PenaltyRed;
+        if (timerText != null) timerText.color = new Color(0.95f, 0.25f, 0.2f);
 
         yield return new WaitForSeconds(0.6f);
 
-        if (popup != null)
-        {
-            popup.gameObject.SetActive(false);
-            popup.color = playerIndex == 1 ? penaltyPopupDefaultColorP2 : penaltyPopupDefaultColorP1;
-        }
-        if (timer != null)
-            timer.color = GetTimerDefaultColor(playerIndex);
+        if (penaltyPopupText != null) penaltyPopupText.gameObject.SetActive(false);
+        if (penaltyPopupText != null) penaltyPopupText.color = penaltyPopupDefaultColor;
+        if (timerText != null) timerText.color = timerDefaultColor;
     }
 
-    IEnumerator BonusFeedback(int playerIndex, float seconds)
+    IEnumerator BonusFeedback()
     {
-        var popup = GetPenaltyPopup(playerIndex);
-        if (popup != null)
+        if (penaltyPopupText != null)
         {
-            popup.text = "+" + Mathf.RoundToInt(seconds) + "s";
-            popup.color = PlayerColors.BonusGreen;
-            popup.gameObject.SetActive(true);
+            penaltyPopupText.text = "+" + Mathf.RoundToInt(nearMissBonus) + "s";
+            penaltyPopupText.color = new Color(0.3f, 0.95f, 0.4f);
+            penaltyPopupText.gameObject.SetActive(true);
         }
 
         yield return new WaitForSeconds(0.6f);
 
-        if (popup != null)
+        if (penaltyPopupText != null)
         {
-            popup.gameObject.SetActive(false);
-            popup.color = playerIndex == 1 ? penaltyPopupDefaultColorP2 : penaltyPopupDefaultColorP1;
+            penaltyPopupText.gameObject.SetActive(false);
+            penaltyPopupText.color = penaltyPopupDefaultColor;
         }
-    }
-
-    IEnumerator ShowEliminationBanner(int playerIndex)
-    {
-        if (eliminationBannerText == null)
-            yield break;
-
-        eliminationBannerText.text = PlayerColors.GetFullLabel(playerIndex) + " IS OUT!";
-        eliminationBannerText.color = PlayerColors.GetColor(playerIndex);
-        eliminationBannerText.gameObject.SetActive(true);
-        if (sfxSource != null && impactClip != null)
-            sfxSource.PlayOneShot(impactClip);
-
-        yield return new WaitForSeconds(1.5f);
-        eliminationBannerText.gameObject.SetActive(false);
     }
 
     void UpdateTimerDisplay()
     {
         if (timerText != null)
-        {
-            string p1Label = IsTwoPlayerMode ? "P1: " : "Time: ";
-            timerText.text = eliminated[0] && IsTwoPlayerMode
-                ? "P1: OUT"
-                : p1Label + Mathf.CeilToInt(Mathf.Max(displayedTimer, 0f));
-        }
-
-        if (timer2Text != null && IsTwoPlayerMode)
-            timer2Text.text = eliminated[1]
-                ? "P2: OUT"
-                : "P2: " + Mathf.CeilToInt(Mathf.Max(displayedTimer2, 0f));
+            timerText.text = "Time: " + Mathf.CeilToInt(Mathf.Max(displayedTimer, 0f));
     }
 
     void UpdateRunStatsDisplay()
@@ -921,27 +435,21 @@ public class GameManager : MonoBehaviour
 
     void UpdateLowTimeWarning()
     {
-        if (!IsGameActive || IsPaused)
+        if (timerText == null || !IsGameActive || IsPaused || timeRemaining > lowTimeWarningThreshold)
             return;
 
-        bool showingPenalty = (penaltyPopupP1 != null && penaltyPopupP1.gameObject.activeSelf)
-            || (penaltyPopupP2 != null && penaltyPopupP2.gameObject.activeSelf);
+        bool showingPenalty = penaltyPopupText != null && penaltyPopupText.gameObject.activeSelf;
         if (showingPenalty)
             return;
 
         float pulse = 0.5f + 0.5f * Mathf.Sin(Time.time * 8f);
-        if (timerText != null && !eliminated[0] && timeRemaining <= lowTimeWarningThreshold)
-            timerText.color = Color.Lerp(timerDefaultColorP1, lowTimeWarningColor, pulse);
-        if (timer2Text != null && IsTwoPlayerMode && !eliminated[1] && timeRemaining2 <= lowTimeWarningThreshold)
-            timer2Text.color = Color.Lerp(timerDefaultColorP2, lowTimeWarningColor, pulse);
+        timerText.color = Color.Lerp(timerDefaultColor, lowTimeWarningColor, pulse);
     }
 
     void UpdateControlsHint()
     {
         if (controlsHintText != null)
-            controlsHintText.text = IsTwoPlayerMode
-                ? "Dodge Obstacles\nP1 WASD, P2 Arrows or Gamepad\nEsc pause"
-                : "Dodge Obstacles\nWASD steer\nEsc pause";
+            controlsHintText.text = "Dodge Obstacles\nWASD steer\nEsc pause";
     }
 
     void UpdateMusicButtonLabel()
@@ -1012,33 +520,8 @@ public class GameManager : MonoBehaviour
     {
         IsGameActive = false;
         timeRemaining = 0f;
-        if (IsTwoPlayerMode)
-            timeRemaining2 = 0f;
         UpdateTimerDisplay();
 
-        if (IsTwoPlayerMode)
-            ShowTwoPlayerGameOver();
-        else
-            ShowSinglePlayerGameOver();
-
-        UpdateLeaderboardDisplay();
-        if (gameOverPanel != null)
-        {
-            if (gameOverShowRoutine != null)
-                StopCoroutine(gameOverShowRoutine);
-            gameOverShowRoutine = StartCoroutine(UIPanelTransition.Show(gameOverPanel));
-        }
-        if (musicSource != null) musicSource.volume = menuMusicVolume;
-        if (spawnManager != null) spawnManager.StopSpawning();
-        if (player == null)
-            ResolvePlayers();
-        BeginPlayerExit(0);
-        if (IsTwoPlayerMode)
-            BeginPlayerExit(1);
-    }
-
-    void ShowSinglePlayerGameOver()
-    {
         // The record is the longest survival: real seconds from Drive until the clock ran out.
         float survival = Time.timeSinceLevelLoad - gameStartTime;
         int waveReached = Mathf.Max(1, Mathf.FloorToInt(survival / rampInterval) + 1);
@@ -1070,60 +553,32 @@ public class GameManager : MonoBehaviour
             GameObject fx = Instantiate(fireworksPrefab, new Vector3(0f, 1f, 2.5f), fireworksPrefab.transform.rotation);
             Destroy(fx, 6f);
         }
-    }
 
-    // Competitive result: whoever survived longer wins. The leaderboard, NEW BEST
-    // banner, and fireworks stay single-player only so records remain comparable.
-    void ShowTwoPlayerGameOver()
-    {
-        bool tie = Mathf.Approximately(survivalTime[0], survivalTime[1]);
-        string headline = tie
-            ? "It's a Tie!"
-            : survivalTime[0] > survivalTime[1] ? "Player 1 Wins!" : "Player 2 Wins!";
-
-        if (!tie)
-            SessionScore.RecordWin(survivalTime[0] > survivalTime[1] ? 0 : 1);
-
-        if (runTimeText != null)
+        UpdateLeaderboardDisplay();
+        if (gameOverPanel != null)
         {
-            runTimeText.text = headline;
-            runTimeText.color = tie ? Color.white : PlayerColors.GetColor(survivalTime[0] > survivalTime[1] ? 0 : 1);
+            if (gameOverShowRoutine != null)
+                StopCoroutine(gameOverShowRoutine);
+            gameOverShowRoutine = StartCoroutine(UIPanelTransition.Show(gameOverPanel));
         }
-
-        string statsText = "P1: " + Mathf.FloorToInt(survivalTime[0]) + "s"
-            + "\nP2: " + Mathf.FloorToInt(survivalTime[1]) + "s"
-            + "\nDodged: " + rocksDodged
-            + "\nHits: " + hitsTaken
-            + "\n" + SessionScore.FormatLine();
-
-        if (gameOverStatsText != null)
-            gameOverStatsText.text = statsText;
-        else if (runTimeText != null)
-            runTimeText.text += "\n" + statsText;
-
-        if (newBestText != null)
-            newBestText.SetActive(false);
-
-        if (!tie && fireworksPrefab != null)
+        if (musicSource != null) musicSource.volume = menuMusicVolume;
+        if (spawnManager != null) spawnManager.StopSpawning();
+        if (player == null)
+            player = FindAnyObjectByType<PlayerController>();
+        if (player != null)
         {
-            GameObject fx = Instantiate(fireworksPrefab, new Vector3(0f, 1f, 2.5f), fireworksPrefab.transform.rotation);
-            Destroy(fx, 6f);
+            IsVehicleExiting = true;
+            player.BeginExitDrive();
         }
     }
 
     public void OnVehicleExitComplete()
     {
-        OnVehicleExitComplete(player);
-    }
-
-    public void OnVehicleExitComplete(PlayerController exited)
-    {
-        exitingVehicles = Mathf.Max(0, exitingVehicles - 1);
-        IsVehicleExiting = exitingVehicles > 0;
-        if (exited != null)
+        IsVehicleExiting = false;
+        if (player != null)
         {
-            exited.enabled = false;
-            exited.gameObject.SetActive(false);
+            player.enabled = false;
+            player.gameObject.SetActive(false);
         }
     }
 }
