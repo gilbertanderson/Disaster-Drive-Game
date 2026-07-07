@@ -23,6 +23,11 @@ public class VehicleExitTests
     [Test]
     public void ActiveRockCount_ResetsOnSubsystemRegistration()
     {
+        // ActiveRockCount is a static counter shared by every test in the run; reset it
+        // first so this test's expected increments don't depend on execution order.
+        typeof(MoveDown).GetMethod("ResetActiveRockCount", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, null);
+
         var rock = new GameObject("Rock");
         rock.AddComponent<Rigidbody>().useGravity = false;
         rock.AddComponent<MoveDown>();

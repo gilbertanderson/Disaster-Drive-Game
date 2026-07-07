@@ -10,16 +10,26 @@ public class VehicleSelector : MonoBehaviour
 {
     private const string VehicleIndexKey = "VehicleIndex";
 
+    [SerializeField] private int playerIndex;                  // 0 = Player 1 (legacy prefs key), 1 = Player 2
+    [SerializeField] private VehicleSelector otherSelector;    // The other player's selector; the two may never match
     [SerializeField] private GameObject[] vehicleVisuals;
     [SerializeField] private string[] vehicleNames;           // Optional display names; falls back to visual object names
     [SerializeField] private TMP_Text vehicleNameText;        // Shown on the start screen while cycling vehicles
     [SerializeField] private ParticleSystem[] dirtEmitters;   // Rear-tire dirt spray; repositioned to fit each vehicle
     [SerializeField] private bool showEmitterOrientationGizmos = true;
     [SerializeField] private float targetFootprint;  // 0 = auto median horizontal extent across all visuals
+    [SerializeField] private float[] speedMultipliers;
+    [SerializeField] private float[] hitboxScaleMultipliers;
+
 
     private int index;
     private GameManager gameManager;
     private GroundScroller groundScroller;
+
+    public int CurrentIndex => index;
+
+    // P1 keeps the original key so an existing save still restores its vehicle.
+    string PrefsKey => playerIndex <= 0 ? VehicleIndexKey : VehicleIndexKey + (playerIndex + 1);
 
     void Awake()
     {
@@ -41,8 +51,9 @@ public class VehicleSelector : MonoBehaviour
             return;
 
         CompactVehicleVisuals();
+        EnsureStatTables();
         NormalizeVisualScales();
-        index = Mathf.Clamp(PlayerPrefs.GetInt(VehicleIndexKey, 0), 0, vehicleVisuals.Length - 1);
+        index = Mathf.Clamp(PlayerPrefs.GetInt(PrefsKey, 0), 0, vehicleVisuals.Length - 1);
         NormalizeVisualPositions();
         Apply();
     }
@@ -51,11 +62,22 @@ public class VehicleSelector : MonoBehaviour
     {
         // On the start screen, A/D and the arrow keys cycle vehicles like the < > buttons.
         // Gated to the start screen so leftover steering presses can't change the vehicle.
+        // In two-player mode the key sets split to mirror the driving controls:
+        // A/D cycles Player 1's vehicle, the arrows cycle Player 2's.
         if (gameManager != null && gameManager.IsOnStartScreen && Keyboard.current != null)
         {
-            if (Keyboard.current.aKey.wasPressedThisFrame || Keyboard.current.leftArrowKey.wasPressedThisFrame)
+            bool twoPlayer = gameManager.IsTwoPlayerMode;
+            bool listenWasd = playerIndex == 0;
+            bool listenArrows = twoPlayer ? playerIndex == 1 : playerIndex == 0;
+
+            bool prevPressed = (listenWasd && Keyboard.current.aKey.wasPressedThisFrame)
+                || (listenArrows && Keyboard.current.leftArrowKey.wasPressedThisFrame);
+            bool nextPressed = (listenWasd && Keyboard.current.dKey.wasPressedThisFrame)
+                || (listenArrows && Keyboard.current.rightArrowKey.wasPressedThisFrame);
+
+            if (prevPressed)
                 PreviousVehicle();
-            else if (Keyboard.current.dKey.wasPressedThisFrame || Keyboard.current.rightArrowKey.wasPressedThisFrame)
+            else if (nextPressed)
                 NextVehicle();
         }
 
@@ -89,10 +111,51 @@ public class VehicleSelector : MonoBehaviour
         if (vehicleVisuals == null || vehicleVisuals.Length == 0)
             return;
 
-        index = (index + direction + vehicleVisuals.Length) % vehicleVisuals.Length;
-        PlayerPrefs.SetInt(VehicleIndexKey, index);
+        // Step past any index the other player already holds so the two
+        // selectors can never land on the same vehicle.
+        int candidate = index;
+        for (int step = 0; step < vehicleVisuals.Length; step++)
+        {
+            candidate = (candidate + direction + vehicleVisuals.Length) % vehicleVisuals.Length;
+            if (!IsIndexTakenByOther(candidate))
+                break;
+        }
+
+        if (candidate == index || IsIndexTakenByOther(candidate))
+            return;   // Only one legal vehicle left; stay put
+
+        index = candidate;
+        PlayerPrefs.SetInt(PrefsKey, index);
         PlayerPrefs.Save();
         Apply();
+    }
+
+    bool IsIndexTakenByOther(int candidate)
+    {
+        // An inactive other selector means single-player mode (Player 2 is disabled),
+        // so every vehicle is available.
+        if (otherSelector == null || !otherSelector.gameObject.activeInHierarchy)
+            return false;
+
+        return candidate == otherSelector.CurrentIndex;
+    }
+
+    // Called when two-player mode turns on: if this selector loaded the same
+    // vehicle as the other player, advance to the next free one.
+    public void EnsureDistinctFrom(VehicleSelector other)
+    {
+        if (other == null)
+            return;
+
+        otherSelector = other;
+        if (other.otherSelector == null)
+            other.otherSelector = this;
+
+        if (vehicleVisuals == null || vehicleVisuals.Length < 2)
+            return;
+
+        if (index == other.CurrentIndex)
+            Cycle(1);
     }
 
     void Apply()
@@ -102,15 +165,42 @@ public class VehicleSelector : MonoBehaviour
                 vehicleVisuals[i].SetActive(i == index);
 
         FitColliderToVisual();
+        ApplyVehicleStats();
         UpdateVehicleNameLabel();
     }
+
+    public void ReapplyStats() => Apply();
+
+    void ApplyVehicleStats()
+    {
+        float speedMul = GetStatMultiplier(speedMultipliers, 1f);
+        var controller = GetComponent<PlayerController>();
+        if (controller != null)
+            controller.SetSpeedMultiplier(speedMul);
+    }
+
+    float GetStatMultiplier(float[] table, float fallback)
+    {
+        if (table == null || table.Length == 0)
+            return fallback;
+        int i = Mathf.Clamp(index, 0, table.Length - 1);
+        return table[i] > 0.001f ? table[i] : fallback;
+    }
+
+    public void RefreshLabel() => UpdateVehicleNameLabel();
 
     void UpdateVehicleNameLabel()
     {
         if (vehicleNameText == null || vehicleVisuals == null || vehicleVisuals.Length == 0)
             return;
 
-        vehicleNameText.text = GetVehicleDisplayName(index);
+        bool twoPlayer = gameManager != null && gameManager.IsTwoPlayerMode;
+        string prefix = twoPlayer ? PlayerColors.GetLabel(playerIndex) + ": " : string.Empty;
+        vehicleNameText.text = prefix + GetVehicleDisplayName(index);
+        if (twoPlayer)
+            vehicleNameText.color = PlayerColors.GetColor(playerIndex);
+        else
+            vehicleNameText.color = Color.white;
     }
 
     string GetVehicleDisplayName(int vehicleIndex)
@@ -161,6 +251,9 @@ public class VehicleSelector : MonoBehaviour
         {
             case "Off-road vehicle":
                 displayName = "Humvee";
+                return true;
+            case "SURVIVAL ARMORED TRUCK 1":
+                displayName = "Armored Truck";
                 return true;
             case "Prefab_K-131":
                 displayName = "Jeep";
@@ -226,6 +319,35 @@ public class VehicleSelector : MonoBehaviour
 
         if (compacted.Count != vehicleVisuals.Length)
             vehicleVisuals = compacted.ToArray();
+    }
+
+    void EnsureStatTables()
+    {
+        if (vehicleVisuals == null || vehicleVisuals.Length == 0)
+            return;
+
+        if (speedMultipliers == null || speedMultipliers.Length != vehicleVisuals.Length)
+            speedMultipliers = BuildDefaultSpeedTable(vehicleVisuals.Length);
+        if (hitboxScaleMultipliers == null || hitboxScaleMultipliers.Length != vehicleVisuals.Length)
+            hitboxScaleMultipliers = BuildDefaultHitboxTable(vehicleVisuals.Length);
+    }
+
+    static float[] BuildDefaultSpeedTable(int count)
+    {
+        float[] defaults = { 0.92f, 1f, 1.08f, 0.88f, 1.05f };
+        var table = new float[count];
+        for (int i = 0; i < count; i++)
+            table[i] = i < defaults.Length ? defaults[i] : 1f;
+        return table;
+    }
+
+    static float[] BuildDefaultHitboxTable(int count)
+    {
+        float[] defaults = { 1.08f, 1f, 0.95f, 1.12f, 0.92f };
+        var table = new float[count];
+        for (int i = 0; i < count; i++)
+            table[i] = i < defaults.Length ? defaults[i] : 1f;
+        return table;
     }
 
     // Scale each visual so its top-down footprint matches the fleet median (or targetFootprint).
@@ -357,7 +479,8 @@ public class VehicleSelector : MonoBehaviour
         // World-space bounds -> this object's local space (the vehicle never rotates)
         Vector3 lossy = transform.lossyScale;
         box.center = transform.InverseTransformPoint(b.center);
-        box.size = new Vector3(b.size.x / lossy.x, b.size.y / lossy.y, b.size.z / lossy.z) * 0.95f;
+        float hitboxMul = GetStatMultiplier(hitboxScaleMultipliers, 1f);
+        box.size = new Vector3(b.size.x / lossy.x, b.size.y / lossy.y, b.size.z / lossy.z) * 0.95f * hitboxMul;
 
         PositionDirtEmitters(box);
     }
