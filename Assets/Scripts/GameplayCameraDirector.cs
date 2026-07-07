@@ -1,24 +1,27 @@
-using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
-// Drives the start-of-run intro camera: cinematic anchor on Drive, then back to gameplay top-down view.
+// Drives the start-of-run intro camera: beat-synced cinematic shots during 3-2-1-GO, then top-down gameplay.
 public class GameplayCameraDirector : MonoBehaviour
 {
-    enum IntroPhase { Idle, IntroIn, Hold, Return, Done }
-
-    [SerializeField] private Transform introAnchor;
+    [SerializeField] private Transform introRig;
+    [SerializeField] private Transform frontAnchor;
+    [SerializeField] private Transform leftAnchor;
+    [SerializeField] private Transform behindAnchor;
     [SerializeField] private CameraShake cameraShake;
-    [SerializeField] private float introInDuration = 0.5f;
-    [SerializeField] private float introHoldDuration = 1.7f;
-    [SerializeField] private float returnDuration = 1f;
+    [SerializeField] private float beatDuration = 0.8f;
 
     private Vector3 gameplayPosition;
     private Quaternion gameplayRotation;
-    private IntroPhase phase = IntroPhase.Idle;
-    private float phaseElapsed;
-    private Vector3 phaseStartPosition;
-    private Quaternion phaseStartRotation;
-    private Coroutine introRoutine;
+    private bool introActive;
+    private bool introComplete;
+    private int currentBeat = -1;
+    private float beatElapsed;
+    private Vector3 beatStartPosition;
+    private Quaternion beatStartRotation;
+    private Vector3 beatTargetPosition;
+    private Quaternion beatTargetRotation;
+    private bool beatInProgress;
 
     void Awake()
     {
@@ -27,103 +30,152 @@ public class GameplayCameraDirector : MonoBehaviour
             cameraShake = GetComponent<CameraShake>();
     }
 
+    void Update()
+    {
+        if (beatInProgress)
+            TickBeat(Time.unscaledDeltaTime);
+    }
+
     public void CacheGameplayPose()
     {
         gameplayPosition = transform.position;
         gameplayRotation = transform.rotation;
     }
 
-    public IEnumerator PlayIntroSequence()
+    public void StartIntroSequence(IReadOnlyList<Transform> vehicleRoots)
     {
-        if (introAnchor == null)
-            yield break;
-
-        if (introRoutine != null)
-            StopCoroutine(introRoutine);
+        CacheGameplayPose();
 
         if (cameraShake != null)
             cameraShake.StopAndReset();
 
-        BeginPhase(IntroPhase.IntroIn);
-        while (phase != IntroPhase.Done)
-        {
-            phaseElapsed += Time.unscaledDeltaTime;
-            TickIntro();
-            yield return null;
-        }
+        PositionRigAtFocalPoint(vehicleRoots);
 
-        introRoutine = null;
+        introActive = HasValidAnchors();
+        introComplete = !introActive;
+        currentBeat = -1;
+        beatInProgress = false;
+        beatElapsed = 0f;
     }
 
-    public void StartIntroSequence()
+    public void PlayCountdownBeat(int beatIndex)
     {
-        if (introRoutine != null)
-            StopCoroutine(introRoutine);
-        introRoutine = StartCoroutine(PlayIntroSequence());
+        if (!introActive || beatIndex < 0 || beatIndex > 3)
+            return;
+
+        beatStartPosition = transform.position;
+        beatStartRotation = transform.rotation;
+        GetBeatTargetPose(beatIndex, out beatTargetPosition, out beatTargetRotation);
+        currentBeat = beatIndex;
+        beatElapsed = 0f;
+        beatInProgress = true;
     }
 
-    // Advances the intro timeline by a fixed delta; used by edit-mode tests.
-    internal void SimulateIntroStep(float deltaTime)
+    internal bool IsIntroComplete => introComplete || !HasValidAnchors();
+
+    internal int CurrentBeat => currentBeat;
+
+    // Advances the active beat lerp; used by edit-mode tests.
+    internal void SimulateBeatStep(float deltaTime)
     {
-        if (introAnchor == null)
+        if (!introActive)
         {
-            phase = IntroPhase.Done;
+            introComplete = true;
             return;
         }
 
-        if (phase == IntroPhase.Idle)
-            BeginPhase(IntroPhase.IntroIn);
+        if (!beatInProgress && currentBeat < 0)
+            PlayCountdownBeat(0);
 
-        phaseElapsed += deltaTime;
-        TickIntro();
+        if (beatInProgress)
+            TickBeat(deltaTime);
     }
 
-    internal bool IsIntroComplete => phase == IntroPhase.Done || introAnchor == null;
-
-    void BeginPhase(IntroPhase next)
+    internal void SimulateFullIntro(float stepDelta = 0.05f)
     {
-        phase = next;
-        phaseElapsed = 0f;
-        phaseStartPosition = transform.position;
-        phaseStartRotation = transform.rotation;
-    }
-
-    void TickIntro()
-    {
-        switch (phase)
+        StartIntroSequence(null);
+        for (int beat = 0; beat < 4; beat++)
         {
-            case IntroPhase.IntroIn:
-                if (AdvanceLerp(introAnchor.position, introAnchor.rotation, introInDuration))
-                    BeginPhase(IntroPhase.Hold);
+            PlayCountdownBeat(beat);
+            float elapsed = 0f;
+            while (beatInProgress && elapsed <= beatDuration + stepDelta)
+            {
+                SimulateBeatStep(stepDelta);
+                elapsed += stepDelta;
+            }
+        }
+    }
+
+    bool HasValidAnchors()
+    {
+        return introRig != null && frontAnchor != null && leftAnchor != null && behindAnchor != null;
+    }
+
+    void PositionRigAtFocalPoint(IReadOnlyList<Transform> vehicleRoots)
+    {
+        if (introRig == null || vehicleRoots == null || vehicleRoots.Count == 0)
+            return;
+
+        Vector3 sum = Vector3.zero;
+        int count = 0;
+        foreach (Transform root in vehicleRoots)
+        {
+            if (root == null)
+                continue;
+            sum += root.position;
+            count++;
+        }
+
+        if (count == 0)
+            return;
+
+        Vector3 midpoint = sum / count;
+        Vector3 rigPosition = introRig.position;
+        introRig.position = new Vector3(midpoint.x, rigPosition.y, midpoint.z);
+    }
+
+    void GetBeatTargetPose(int beatIndex, out Vector3 position, out Quaternion rotation)
+    {
+        switch (beatIndex)
+        {
+            case 0:
+                position = frontAnchor.position;
+                rotation = frontAnchor.rotation;
                 break;
-            case IntroPhase.Hold:
-                transform.SetPositionAndRotation(introAnchor.position, introAnchor.rotation);
-                if (phaseElapsed >= introHoldDuration)
-                    BeginPhase(IntroPhase.Return);
+            case 1:
+                position = leftAnchor.position;
+                rotation = leftAnchor.rotation;
                 break;
-            case IntroPhase.Return:
-                if (AdvanceLerp(gameplayPosition, gameplayRotation, returnDuration))
-                {
-                    phase = IntroPhase.Done;
-                    if (cameraShake != null)
-                        cameraShake.SyncRestPosition();
-                }
+            case 2:
+                position = behindAnchor.position;
+                rotation = behindAnchor.rotation;
+                break;
+            default:
+                position = gameplayPosition;
+                rotation = gameplayRotation;
                 break;
         }
     }
 
-    bool AdvanceLerp(Vector3 targetPosition, Quaternion targetRotation, float duration)
+    void TickBeat(float deltaTime)
     {
-        if (duration <= 0f)
-        {
-            transform.SetPositionAndRotation(targetPosition, targetRotation);
-            return true;
-        }
-
-        float t = Mathf.Clamp01(phaseElapsed / duration);
+        beatElapsed += deltaTime;
+        float t = beatDuration <= 0f ? 1f : Mathf.Clamp01(beatElapsed / beatDuration);
         float eased = Mathf.SmoothStep(0f, 1f, t);
-        transform.position = Vector3.Lerp(phaseStartPosition, targetPosition, eased);
-        transform.rotation = Quaternion.Slerp(phaseStartRotation, targetRotation, eased);
-        return t >= 1f;
+        transform.position = Vector3.Lerp(beatStartPosition, beatTargetPosition, eased);
+        transform.rotation = Quaternion.Slerp(beatStartRotation, beatTargetRotation, eased);
+
+        if (t < 1f)
+            return;
+
+        transform.SetPositionAndRotation(beatTargetPosition, beatTargetRotation);
+        beatInProgress = false;
+
+        if (currentBeat == 3)
+        {
+            introComplete = true;
+            if (cameraShake != null)
+                cameraShake.SyncRestPosition();
+        }
     }
 }

@@ -12,12 +12,24 @@ public class WallSpawnManager : MonoBehaviour
     [SerializeField] private float segmentY = 0.05f;
     [SerializeField] private float segmentScale = 2f;
     [SerializeField] private float spawnBackMargin = 2f;
+    [SerializeField] private float segmentOverlap = 0.25f;
 
     private Transform segmentRoot;
     private GameManager gameManager;
     private Camera gameCamera;
     private float segmentSpacing = 4f;
     private bool spacingMeasured;
+
+    public float SegmentSpacing
+    {
+        get
+        {
+            MeasureSegmentSpacing();
+            return segmentSpacing;
+        }
+    }
+
+    public float SpawnX => spawnX;
 
     void Awake()
     {
@@ -44,8 +56,17 @@ public class WallSpawnManager : MonoBehaviour
             return;
 
         float laneZ = segment.LaneZ;
+        Vector3 moveDir = grassScroller != null ? grassScroller.WorldMoveDirection : Vector3.left;
+
+        if (TryGetLeadSegment(laneZ, segment, moveDir, out WallScroller lead))
+        {
+            Vector3 newPos = lead.transform.position - moveDir * segmentSpacing;
+            segment.transform.position = new Vector3(newPos.x, segmentY, laneZ);
+            return;
+        }
+
         float respawnX = GetRespawnX(segment.transform.position.y);
-        segment.transform.position = new Vector3(respawnX, segment.transform.position.y, laneZ);
+        segment.transform.position = new Vector3(respawnX, segmentY, laneZ);
     }
 
     public float GetRespawnX(float segmentY)
@@ -105,11 +126,35 @@ public class WallSpawnManager : MonoBehaviour
             for (int i = 1; i < renderers.Length; i++)
                 b.Encapsulate(renderers[i].bounds);
 
-            segmentSpacing = Mathf.Max(b.size.x, 0.5f);
+            segmentSpacing = Mathf.Max(b.size.x - segmentOverlap, 0.5f);
             spacingMeasured = true;
         }
 
         Destroy(probe);
+    }
+
+    bool TryGetLeadSegment(float laneZ, WallScroller exclude, Vector3 moveDir, out WallScroller lead)
+    {
+        lead = null;
+        float leadAlong = float.PositiveInfinity;
+        const float laneEpsilon = 0.1f;
+
+        foreach (var scroller in FindObjectsByType<WallScroller>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (scroller == exclude || scroller == null)
+                continue;
+            if (Mathf.Abs(scroller.LaneZ - laneZ) > laneEpsilon)
+                continue;
+
+            float along = Vector3.Dot(scroller.transform.position, moveDir);
+            if (along < leadAlong)
+            {
+                leadAlong = along;
+                lead = scroller;
+            }
+        }
+
+        return lead != null;
     }
 
     float GetMinSpawnX()

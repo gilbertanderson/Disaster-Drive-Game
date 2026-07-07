@@ -29,6 +29,7 @@ public class VehicleSelectorTests
         }
 
         groundGameObject = new GameObject("GroundScroller");
+        groundGameObject.AddComponent<MeshRenderer>();
         groundGameObject.AddComponent<GroundScroller>();
 
         selectorGameObject = new GameObject("VehicleSelector");
@@ -94,15 +95,26 @@ public class VehicleSelectorTests
     [Test]
     public void Awake_AlignsEmitterToRoadMovementDirection()
     {
+        Assert.IsNotNull(groundGameObject);
         var scroller = groundGameObject.GetComponent<GroundScroller>();
-        SetPrivateField(scroller, "scrollDirection", new Vector2(0f, -1f));
+        Assert.IsNotNull(scroller);
+
+        SetPrivateField(scroller, "scrollDirection", new Vector2(-1f, 0f));
         SetPrivateField(selector, "groundScroller", scroller);
 
-        Assert.That(scroller.WorldMoveDirection, Is.EqualTo(Vector3.back));
-        Assert.That(GetPrivateField<GroundScroller>(selector, "groundScroller"), Is.SameAs(scroller));
+        var box = selector.GetComponent<BoxCollider>();
+        Assert.IsNotNull(box);
+        box.center = Vector3.zero;
+        box.size = new Vector3(4f, 2f, 8f);
 
-        InvokePrivateMethod("Apply");
-        Assert.That(emitter.transform.right, Is.EqualTo(Vector3.back).Using(Vector3EqualityComparer.Instance));
+        var positionDirtEmitters = typeof(VehicleSelector).GetMethod(
+            "PositionDirtEmitters",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(positionDirtEmitters);
+        positionDirtEmitters.Invoke(selector, new object[] { box });
+
+        Assert.That(scroller.WorldMoveDirection, Is.EqualTo(Vector3.left));
+        Assert.That(emitter.transform.right, Is.EqualTo(Vector3.left).Using(Vector3EqualityComparer.Instance));
     }
 
     [Test]
@@ -221,13 +233,6 @@ public class VehicleSelectorTests
         var field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.IsNotNull(field, $"Could not find private field '{fieldName}' on {target.GetType()}.");
         field.SetValue(target, value);
-    }
-
-    private static T GetPrivateField<T>(object target, string fieldName)
-    {
-        var field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.IsNotNull(field, $"Could not find private field '{fieldName}' on {target.GetType()}.");
-        return (T)field.GetValue(target);
     }
 
     private void InvokePrivateMethod(string methodName)

@@ -73,6 +73,7 @@ public class GameManager : MonoBehaviour
     [SerializeField] private TMP_Text controlsHintText;  // Short controls reminder on the start screen
     [SerializeField] private float lowTimeWarningThreshold = 10f;
     [SerializeField] private Color lowTimeWarningColor = new Color(1f, 0.55f, 0.2f);
+    [SerializeField] private float countdownBeatDuration = 0.8f;
 
     [Header("Impact Feedback")]
     [SerializeField] private AudioClip impactClip;         // Honk played when the vehicle hits a rock
@@ -409,21 +410,22 @@ public class GameManager : MonoBehaviour
 
     IEnumerator RunCountdown()
     {
-        if (cameraDirector != null)
-            cameraDirector.StartIntroSequence();
-
         string[] steps = { "3", "2", "1", "GO!" };
         if (countdownText != null)
             countdownText.gameObject.SetActive(true);
 
-        foreach (string step in steps)
+        if (cameraDirector != null)
+            cameraDirector.StartIntroSequence(GetActivePlayerRoots());
+
+        for (int i = 0; i < steps.Length; i++)
         {
             if (countdownText != null)
             {
-                countdownText.text = step;
-                countdownText.color = step == "GO!" ? PlayerColors.BonusGreen : Color.white;
+                countdownText.text = steps[i];
+                countdownText.color = steps[i] == "GO!" ? PlayerColors.BonusGreen : Color.white;
             }
-            yield return new WaitForSeconds(0.8f);
+            cameraDirector?.PlayCountdownBeat(i);
+            yield return new WaitForSeconds(countdownBeatDuration);
         }
 
         if (countdownText != null)
@@ -439,6 +441,24 @@ public class GameManager : MonoBehaviour
         gameStartTime = Time.timeSinceLevelLoad;
         nextRampTime = gameStartTime + rampInterval;
         countdownRoutine = null;
+    }
+
+    List<Transform> GetActivePlayerRoots()
+    {
+        var roots = new List<Transform>();
+        if (players == null)
+            return roots;
+
+        foreach (var p in players)
+        {
+            if (p == null || !p.gameObject.activeInHierarchy)
+                continue;
+            if (!IsTwoPlayerMode && p.playerIndex != 0)
+                continue;
+            roots.Add(p.transform);
+        }
+
+        return roots;
     }
 
     void ReapplyVehicleStats()
