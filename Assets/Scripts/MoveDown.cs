@@ -21,7 +21,7 @@ public class MoveDown : MonoBehaviour
     [SerializeField] private float destroyFxLifetimeMultiplier = 0.6f;
 
     private Rigidbody objectRb;       // Cached Rigidbody used for physics-based movement
-    private SphereCollider rockCollider;
+    private BoxCollider rockCollider;
     private Vector3 moveDirection;    // World-space direction that reads as "down the screen"
     private Vector3 spawnPosition;    // Where this obstacle returns to after passing the bottom
     private Quaternion spawnRotation; // Original orientation, restored after a knock-aside
@@ -48,7 +48,7 @@ public class MoveDown : MonoBehaviour
     void Start()
     {
         objectRb = GetComponent<Rigidbody>();
-        rockCollider = GetComponent<SphereCollider>();
+        rockCollider = GetComponent<BoxCollider>();
         objectRb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
         gameManager = FindAnyObjectByType<GameManager>();
         players = FindObjectsByType<PlayerController>(FindObjectsSortMode.None);
@@ -213,8 +213,12 @@ public class MoveDown : MonoBehaviour
             return;
 
         Vector3 worldCenter = transform.TransformPoint(rockCollider.center);
-        float worldRadius = rockCollider.radius * Mathf.Max(transform.lossyScale.x, 0.001f);
-        var overlaps = Physics.OverlapSphere(worldCenter, worldRadius, ~0, QueryTriggerInteraction.Ignore);
+        Vector3 lossyScale = transform.lossyScale;
+        Vector3 halfExtents = new Vector3(
+            rockCollider.size.x * Mathf.Abs(lossyScale.x),
+            rockCollider.size.y * Mathf.Abs(lossyScale.y),
+            rockCollider.size.z * Mathf.Abs(lossyScale.z)) * 0.5f;
+        var overlaps = Physics.OverlapBox(worldCenter, halfExtents, transform.rotation, ~0, QueryTriggerInteraction.Ignore);
         foreach (var overlap in overlaps)
         {
             if (!overlap.CompareTag("Player"))

@@ -24,11 +24,10 @@ public class SpawnManager : MonoBehaviour
 
     [Header("Rock Variety")]
     [SerializeField] private GameObject[] rockVisuals;  // Mesh prefabs swapped onto the shell (PolyOne, JC, etc.)
-    [SerializeField] private Vector2 rockScaleRange = new Vector2(1.3f, 1.4f);  // Random size multiplier per rock
-    [SerializeField] private float maxRockScaleMultiplier = 1.7f;             // Ceiling on total scale relative to the authored rock-visual prefab
+    [SerializeField] private Vector2 rockScaleRange = new Vector2(0.95f, 1.05f);  // Small per-rock jitter applied on top of the normalized target size
     [SerializeField] private float rockSpeedMultiplier = 2.25f;                  // Match decorative trees so rocks travel at the same world speed
     [SerializeField] private float minRockVisualFootprint = 1.2f;                // Drop prefab variants smaller than this at authored scale
-    [SerializeField] private float minRockFootprint;  // 0 = auto-detect from convertible at runtime
+    [SerializeField] private float minRockFootprint;  // 0 = auto-detect from convertible at runtime; also used as the normalized target footprint all rocks scale to
     [SerializeField] private float minRockHeight = 1.8f;                         // Minimum world-space visual height after scaling
     [SerializeField] private float rockGroundBurialFraction = 0.2f;              // Fraction of rock height below the road surface
     [SerializeField] private float groundLevelY;                                 // 0 = auto-detect from Ground / GroundScroller at runtime
@@ -174,23 +173,37 @@ public class SpawnManager : MonoBehaviour
         }
     }
 
+    // Three fixed lanes (left / middle / right) instead of a fully continuous
+    // range, so every rock has a clear gap on at least one side to dodge into.
+    const int LaneCount = 3;
+
+    float PickLaneZ(float low, float high)
+    {
+        float laneWidth = (high - low) / LaneCount;
+        int lane = Random.Range(0, LaneCount);
+        float laneLow = low + laneWidth * lane;
+        float laneJitterPad = laneWidth * 0.15f;  // keep spawns away from lane edges so lanes read as distinct
+        return Random.Range(laneLow + laneJitterPad, laneLow + laneWidth - laneJitterPad);
+    }
+
     float PickSpawnZ()
     {
         if (gameManager != null && gameManager.IsTwoPlayerMode)
         {
             float midZ = (minZ + maxZ) * 0.5f;
-            float z = spawnOnHighSide ? Random.Range(midZ, maxZ) : Random.Range(minZ, midZ);
+            float low = spawnOnHighSide ? midZ : minZ;
+            float high = spawnOnHighSide ? maxZ : midZ;
             spawnOnHighSide = !spawnOnHighSide;
-            return z;
+            return PickLaneZ(low, high);
         }
 
-        return Random.Range(minZ, maxZ);
+        return PickLaneZ(minZ, maxZ);
     }
 
     void SpawnObstacleInternal()
     {
-        float sizeMultiplier = Random.Range(rockScaleRange.x, rockScaleRange.y);
         float randomZ = PickSpawnZ();
+        CacheSpawnX();  // Recompute fresh every spawn so a stale camera/aspect snapshot can never place a rock on-screen.
         Vector3 spawnPos = new Vector3(spawnX, cachedGroundLevelY, randomZ);
 
         GameObject rock;
@@ -211,16 +224,13 @@ public class SpawnManager : MonoBehaviour
             visual = GetRockVisual(rock);
         }
 
-        Vector3 baseScale = rock.transform.localScale;
-        rock.transform.localScale *= sizeMultiplier;
-        EnforceMinimumRockFootprint(rock);
+        NormalizeRockSize(rock);
         EnforceMinimumRockHeight(rock);
-        ClampMaximumRockScale(rock, baseScale);
 
         if (visual != null)
         {
             AlignVisualToGround(visual, rock);
-            FitSphereColliderToVisual(rock, visual);
+            FitBoxColliderToVisual(rock, visual);
         }
 
         ConfigureRockShadows(rock);
@@ -233,6 +243,22 @@ public class SpawnManager : MonoBehaviour
                 : mover.speed;
             mover.speed = Mathf.Max(1.5f, scrollSpeed);
         }
+    }
+
+    // Scales the rock so its footprint matches a single common target instead of
+    // drifting with whatever native scale the source visual prefab happened to ship
+    // at — this is what keeps every rock roughly the same size (large variance was
+    // the main reason the box/sphere collider fit looked wrong on bigger rocks).
+    void NormalizeRockSize(GameObject rock)
+    {
+        float footprint = MeasureRockFootprint(rock);
+        float targetFootprint = minRockFootprint > 0.001f ? minRockFootprint : minRockVisualFootprint;
+        if (footprint <= 0.001f || targetFootprint <= 0.001f)
+            return;
+
+        float normalizeFactor = Mathf.Clamp(targetFootprint / footprint, 0.3f, 3f);
+        float jitter = Random.Range(rockScaleRange.x, rockScaleRange.y);
+        rock.transform.localScale *= normalizeFactor * jitter;
     }
 
     GameObject ApplyRandomVisual(GameObject rock)
@@ -295,16 +321,6 @@ public class SpawnManager : MonoBehaviour
         return Mathf.Max(bounds.size.x, bounds.size.z);
     }
 
-    void EnforceMinimumRockFootprint(GameObject rock)
-    {
-        if (minRockFootprint <= 0.001f)
-            return;
-
-        float footprint = MeasureRockFootprint(rock);
-        if (footprint > 0.001f && footprint < minRockFootprint)
-            rock.transform.localScale *= minRockFootprint / footprint;
-    }
-
     static float MeasureRockHeight(GameObject rock)
     {
         var renderers = rock.GetComponentsInChildren<Renderer>();
@@ -326,19 +342,6 @@ public class SpawnManager : MonoBehaviour
         float height = MeasureRockHeight(rock);
         if (height > 0.001f && height < minRockHeight)
             rock.transform.localScale *= minRockHeight / height;
-    }
-
-    // Pulls the scale back down if the base multiplier plus the min-footprint/
-    // min-height floors above compounded into an oversized rock.
-    void ClampMaximumRockScale(GameObject rock, Vector3 baseScale)
-    {
-        if (maxRockScaleMultiplier <= 0.001f)
-            return;
-
-        float baseX = Mathf.Max(baseScale.x, 0.0001f);
-        float ratio = rock.transform.localScale.x / baseX;
-        if (ratio > maxRockScaleMultiplier)
-            rock.transform.localScale *= maxRockScaleMultiplier / ratio;
     }
 
     bool HasUsableRockVisuals()
@@ -614,9 +617,12 @@ public class SpawnManager : MonoBehaviour
         }
     }
 
-    void FitSphereColliderToVisual(GameObject rock, GameObject visual)
+    // A sphere sized to the visual's full diagonal (bounds.extents.magnitude) badly
+    // overshoots elongated/irregular rocks — the box below fits each axis of the
+    // actual mesh bounds instead, so a car can get much closer before a hit registers.
+    void FitBoxColliderToVisual(GameObject rock, GameObject visual)
     {
-        var collider = rock.GetComponent<SphereCollider>();
+        var collider = rock.GetComponent<BoxCollider>();
         if (collider == null)
             return;
 
@@ -628,11 +634,18 @@ public class SpawnManager : MonoBehaviour
         for (int i = 1; i < renderers.Length; i++)
             bounds.Encapsulate(renderers[i].bounds);
 
+        Vector3 lossyScale = rock.transform.lossyScale;
+        Vector3 safeScale = new Vector3(
+            Mathf.Max(Mathf.Abs(lossyScale.x), 0.0001f),
+            Mathf.Max(Mathf.Abs(lossyScale.y), 0.0001f),
+            Mathf.Max(Mathf.Abs(lossyScale.z), 0.0001f));
+
+        const float fitPadding = 1.05f;  // small margin so the box safely encloses the mesh
         collider.center = rock.transform.InverseTransformPoint(bounds.center);
-        // Enclose the full AABB (max extent alone misses corners on elongated rocks).
-        float enclosingRadius = bounds.extents.magnitude * 1.08f;
-        float uniformScale = Mathf.Max(rock.transform.lossyScale.x, 0.001f);
-        collider.radius = enclosingRadius / uniformScale;
+        collider.size = new Vector3(
+            bounds.size.x / safeScale.x,
+            bounds.size.y / safeScale.y,
+            bounds.size.z / safeScale.z) * fitPadding;
     }
 
     void FindWallRange()
