@@ -26,12 +26,32 @@ Stopping everything the moment the timer hit zero felt abrupt, so I added an exi
 drive where the vehicle keeps moving off screen while rocks, trees, and the
 ground keep scrolling. That required a shared `IsWorldAnimating` flag so
 `MoveDown`, `GroundScroller`, and the dirt emitters all agreed on when the world
-should still move.
+should still move. Once **two-player mode** existed, exit had to work per
+vehicle instead of once globally, and I had to add an `exitViaBottom` option so
+a player eliminated near the bottom of the screen exits downward instead of
+snapping to the same top-exit path as everyone else.
 
 **Syncing motion** across the ground texture, roadside trees, and rocks took a
 lot of tuning. Rocks and trees had to match `GroundScroller.WorldSpeed` or the
 run felt fake. **Camera shake** on rock hits was invisible until I shook along
-the camera's local right/up axes instead of world X and Y.
+the camera's local right/up axes instead of world X and Y. A related bug hid
+in the **stonewall belt**: the code measuring spacing between wall segments was
+probing a lower-detail LOD mesh instead of the LOD0 mesh actually shown up
+close, so segments were spaced about 19% too far apart and left visible gaps.
+I also had a **wheel-spin bug** where `TickWheelSpin` rebuilt each wheel's
+rotation from scratch every frame, silently overwriting the baked FBX
+import-correction rotation some vehicle models ship with — the fix was to
+compose roll and steer on top of the cached base rotation instead of
+replacing it.
+
+Adding a second player was its own project. **Two-player mode** meant
+reworking `GameManager` and `PlayerController` to run per-player timers,
+control schemes, and elimination instead of one global game-over state, plus
+preventing both players from picking the same vehicle. It also broke my
+camera setup — a single fixed camera no longer made sense with two vehicles
+moving independently, so I built a `GameplayCameraDirector` that frames both
+players, repositions to their midpoint, and runs beat-synced transitions
+during the countdown before the round starts.
 
 Asset work continued to bite me. Some rock packs rendered **magenta in URP**, so
 I had to drop incompatible meshes and stick to stylized prefabs that worked with
@@ -47,7 +67,8 @@ renaming it would have broken serialized references.
 
 Overall the main lessons for Project 4 were about finishing a game, not just
 getting one working: normalizing content that was never designed together,
-keeping particle and scroll motion believable, testing the tricky parts, and
+keeping particle and scroll motion believable, extending single-player systems
+to support two players without a rewrite, testing the tricky parts, and
 managing project size so I could actually ship a clean export.
 
 I really enjoyed pushing the project further, and I still plan to add more
