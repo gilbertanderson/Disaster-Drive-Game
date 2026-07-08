@@ -16,8 +16,12 @@ public class MoveDown : MonoBehaviour
     [SerializeField] private float destroyFxCameraSafetyScale = 0.85f;
     [SerializeField] private float destroyFxDownOffset = 0.2f;
     [SerializeField] private float destroyFxCameraForwardOffset = 0.15f;
+    [SerializeField] private float destroyFxSimulationSpeed = 2.75f;
+    [SerializeField] private float destroyFxSpeedMultiplier = 2f;
+    [SerializeField] private float destroyFxLifetimeMultiplier = 0.6f;
 
     private Rigidbody objectRb;       // Cached Rigidbody used for physics-based movement
+    private SphereCollider rockCollider;
     private Vector3 moveDirection;    // World-space direction that reads as "down the screen"
     private Vector3 spawnPosition;    // Where this obstacle returns to after passing the bottom
     private Quaternion spawnRotation; // Original orientation, restored after a knock-aside
@@ -27,7 +31,8 @@ public class MoveDown : MonoBehaviour
     private bool isKnockedAside;      // While true, physics drives the rock instead of the scripted rail
     private bool hitPlayer;           // True once the vehicle collides with this rock
     private bool nearMissChecked;     // Near-miss bonus is evaluated at most once per rock
-    private Transform playerTransform;
+    private Transform playerTransform;          // Single-player fallback (also used by tests)
+    private PlayerController[] players;         // All vehicles; near-miss goes to whichever is nearest
     private GameManager gameManager;  // Rocks travel while the world is animating (active run or exit drive)
     [SerializeField] private float nearMissDistance = 2f;  // Lateral (Z) gap that still counts as a close dodge
 
@@ -43,10 +48,12 @@ public class MoveDown : MonoBehaviour
     void Start()
     {
         objectRb = GetComponent<Rigidbody>();
+        rockCollider = GetComponent<SphereCollider>();
+        objectRb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
         gameManager = FindAnyObjectByType<GameManager>();
-        var player = FindAnyObjectByType<PlayerController>();
-        if (player != null)
-            playerTransform = player.transform;
+        players = FindObjectsByType<PlayerController>(FindObjectsSortMode.None);
+        if (players.Length > 0)
+            playerTransform = players[0].transform;
         objectRb.useGravity = false;                          // Movement is script-driven, not gravity
         objectRb.constraints = RigidbodyConstraints.FreezeRotation    // Don't spin on impact
                              | RigidbodyConstraints.FreezePositionY;  // Stay on the ground; a hit only shoves it sideways
@@ -58,14 +65,7 @@ public class MoveDown : MonoBehaviour
         spawnRotation = objectRb.rotation;                    // ...and its upright orientation to restore later
 
         // Figure out which world direction points down the screen on the ground plane.
-        Vector3 screenUp = gameCamera.transform.forward;      // For an angled camera, forward is the screen-up axis
-        screenUp.y = 0f;
-        if (screenUp.sqrMagnitude < 0.001f)                   // Top-down camera looks straight down...
-            screenUp = gameCamera.transform.up;               // ...so "screen up" lives on the camera's up axis
-        screenUp.y = 0f;
-        screenUp.Normalize();
-
-        moveDirection = -screenUp;                            // Down the screen is the opposite of screen up
+        moveDirection = ScreenEdgeUtility.ComputeTravelDirection(gameCamera);
 
         // Project the bottom edge of the screen onto the travel axis so we know when we've gone off-screen.
         bottomThreshold = ScreenEdgeUtility.BottomAlongTravel(gameCamera, transform.position.y, moveDirection) + wrapMargin;
@@ -97,6 +97,7 @@ public class MoveDown : MonoBehaviour
             return;
 
         TryAwardNearMiss();
+        TryDetectPlayerOverlap();
 
         // While being knocked aside, let physics carry the rock freely so the vehicle
         // can shove it off to the side instead of it stopping dead on its scripted rail —
@@ -120,7 +121,17 @@ public class MoveDown : MonoBehaviour
         // then clamp Z so a sideways hit can't push the rock past the walls.
         Vector3 targetPosition = objectRb.position + speed * Time.fixedDeltaTime * moveDirection;
         targetPosition.z = Mathf.Clamp(targetPosition.z, minZ, maxZ);
+
+        // Clear residual velocity from rock-on-rock bumps so only the scripted rail
+        // moves the obstacle (same pattern as PlayerController).
+        objectRb.linearVelocity = Vector3.zero;
+        objectRb.angularVelocity = Vector3.zero;
         objectRb.MovePosition(targetPosition);
+
+        Vector3 settled = objectRb.position;
+        settled.z = Mathf.Clamp(settled.z, minZ, maxZ);
+        if (!Mathf.Approximately(settled.z, objectRb.position.z))
+            objectRb.position = settled;
 
         // Once the obstacle has travelled past the bottom edge (off-screen behind the
         // player), destroy it so the spawner keeps feeding a fresh flow of rocks.
@@ -134,25 +145,90 @@ public class MoveDown : MonoBehaviour
 
     void TryAwardNearMiss()
     {
-        if (nearMissChecked || hitPlayer || playerTransform == null || gameManager == null || !gameManager.IsGameActive)
+        if (nearMissChecked || hitPlayer || gameManager == null || !gameManager.IsGameActive)
+            return;
+
+        // In two-player mode the dodge credit goes to whichever vehicle the rock
+        // passed closest to; with one player this is just that player.
+        PlayerController nearest = NearestActivePlayer(out Transform nearestTransform);
+        if (nearestTransform == null)
             return;
 
         float rockAlong = Vector3.Dot(objectRb.position, moveDirection);
-        float playerAlong = Vector3.Dot(playerTransform.position, moveDirection);
+        float playerAlong = Vector3.Dot(nearestTransform.position, moveDirection);
         if (rockAlong <= playerAlong)
             return;
 
         nearMissChecked = true;
-        float lateralGap = Mathf.Abs(objectRb.position.z - playerTransform.position.z);
+        float lateralGap = Mathf.Abs(objectRb.position.z - nearestTransform.position.z);
         if (lateralGap <= nearMissDistance)
-            gameManager.OnNearMiss();
+            gameManager.OnNearMiss(nearest);
+    }
+
+    PlayerController NearestActivePlayer(out Transform nearestTransform)
+    {
+        PlayerController nearest = null;
+        nearestTransform = null;
+        float bestSqrDistance = float.PositiveInfinity;
+
+        if (players != null)
+        {
+            foreach (var candidate in players)
+            {
+                if (candidate == null || !candidate.gameObject.activeInHierarchy)
+                    continue;
+
+                float sqrDistance = (candidate.transform.position - objectRb.position).sqrMagnitude;
+                if (sqrDistance < bestSqrDistance)
+                {
+                    bestSqrDistance = sqrDistance;
+                    nearest = candidate;
+                    nearestTransform = candidate.transform;
+                }
+            }
+        }
+
+        // Tests (and older setups) assign playerTransform directly without a controller.
+        if (nearestTransform == null)
+            nearestTransform = playerTransform;
+        return nearest;
     }
 
     // When the player vehicle hits this rock, shove it aside for one tick so the impact
     // still reads as physical, then destroy it shortly after (rather than respawning).
     private void OnCollisionEnter(Collision collision)
     {
-        if (isKnockedAside || !collision.gameObject.CompareTag("Player"))
+        if (!collision.gameObject.CompareTag("Player"))
+            return;
+
+        Vector3 hitPoint = collision.contactCount > 0
+            ? collision.GetContact(0).point
+            : objectRb.position;
+        RegisterPlayerHit(hitPoint, collision.transform);
+    }
+
+    void TryDetectPlayerOverlap()
+    {
+        if (isKnockedAside || hitPlayer || rockCollider == null || playerTransform == null)
+            return;
+
+        Vector3 worldCenter = transform.TransformPoint(rockCollider.center);
+        float worldRadius = rockCollider.radius * Mathf.Max(transform.lossyScale.x, 0.001f);
+        var overlaps = Physics.OverlapSphere(worldCenter, worldRadius, ~0, QueryTriggerInteraction.Ignore);
+        foreach (var overlap in overlaps)
+        {
+            if (!overlap.CompareTag("Player"))
+                continue;
+
+            Vector3 hitPoint = overlap.ClosestPoint(worldCenter);
+            RegisterPlayerHit(hitPoint, overlap.transform);
+            return;
+        }
+    }
+
+    public void RegisterPlayerHit(Vector3 hitPoint, Transform player)
+    {
+        if (isKnockedAside || hitPlayer)
             return;
 
         hitPlayer = true;
@@ -160,9 +236,16 @@ public class MoveDown : MonoBehaviour
         objectRb.constraints = RigidbodyConstraints.FreezeRotation
                              | RigidbodyConstraints.FreezePositionY;
 
+        if (gameManager != null)
+        {
+            // Charge the penalty to whichever player's vehicle took the hit.
+            var hitController = player != null ? player.GetComponentInParent<PlayerController>() : null;
+            gameManager.OnPlayerHit(hitPoint, hitController);
+        }
+
         // Push toward whichever side of the vehicle the rock is on, so it "falls" to
         // that side, while keeping its downward speed so it never simply stops.
-        float side = objectRb.position.z >= collision.transform.position.z ? 1f : -1f;
+        float side = objectRb.position.z >= player.position.z ? 1f : -1f;
         objectRb.linearVelocity = moveDirection * speed + Vector3.forward * (side * knockAsideSpeed);
 
         Invoke(nameof(DestroyRock), 0.01f);
@@ -194,7 +277,35 @@ public class MoveDown : MonoBehaviour
             float rockScaleFactor = Mathf.Clamp(transform.localScale.x, 0.3f, 1f);
             float finalScale = rockScaleFactor * destroyFxScaleMultiplier * destroyFxCameraSafetyScale;
             fx.transform.localScale *= finalScale;
-            Destroy(fx, 2.5f);
+            BoostDestroyParticles(fx);
+            Destroy(fx, 1.5f);
         }
+    }
+
+    static void BoostDestroyParticles(GameObject fx, float simulationSpeed, float speedMultiplier, float lifetimeMultiplier)
+    {
+        foreach (var ps in fx.GetComponentsInChildren<ParticleSystem>(true))
+        {
+            var main = ps.main;
+            main.simulationSpeed = simulationSpeed;
+            main.startDelay = 0f;
+
+            var lifetime = main.startLifetime;
+            lifetime.constant *= lifetimeMultiplier;
+            lifetime.constantMin *= lifetimeMultiplier;
+            lifetime.constantMax *= lifetimeMultiplier;
+            main.startLifetime = lifetime;
+
+            var startSpeed = main.startSpeed;
+            startSpeed.constant *= speedMultiplier;
+            startSpeed.constantMin *= speedMultiplier;
+            startSpeed.constantMax *= speedMultiplier;
+            main.startSpeed = startSpeed;
+        }
+    }
+
+    void BoostDestroyParticles(GameObject fx)
+    {
+        BoostDestroyParticles(fx, destroyFxSimulationSpeed, destroyFxSpeedMultiplier, destroyFxLifetimeMultiplier);
     }
 }

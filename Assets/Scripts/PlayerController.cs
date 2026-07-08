@@ -3,7 +3,19 @@ using UnityEngine.InputSystem;
 
 public class PlayerController : MonoBehaviour
 {
+    // Which keyboard keys steer this vehicle. Solo play keeps both sets live;
+    // two-player mode gives WASD to P1 and the arrow keys to P2.
+    public enum ControlScheme
+    {
+        WasdAndArrows,
+        WasdOnly,
+        ArrowsOnly,
+        ArrowsAndGamepad
+    }
+
+    public int playerIndex;                   // 0 = Player 1, 1 = Player 2
     public float speed = 10f;                 // Movement speed in units per second
+    private float baseSpeed = 10f;              // Unmodified speed before vehicle stat multipliers
     private float minX;                       // Left edge of the playable area
     private float maxX;                       // Right edge of the playable area
     private float minZ;                       // Bottom edge of the playable area
@@ -17,15 +29,20 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float exitOffScreenMargin = 0.5f;
     [SerializeField] private float exitMinDuration = 0.75f;
     public float movementDeadzone = 0.25f;    // Ignore tiny input noise for dirt emitter direction
+    [SerializeField] private float crashKnockbackSpeed = 5f;    // Shove applied when two vehicles collide
+    [SerializeField] private float crashKnockbackDuration = 0.3f;  // Window where physics, not input, drives the vehicle
 
     private Rigidbody playerRb;               // Cached Rigidbody for physics-based movement
     private Collider playerCollider;          // Cached collider, used to keep the whole body inside the bounds
     private GameManager gameManager;          // Notified when the vehicle hits a rock
     private Vector2 movementInput;            // Latest input value read each frame
     private bool isExiting;
+    private bool exitViaBottom;
     private float exitStartTime;
     private Vector3 exitDirection;
+    private float knockbackUntil = float.NegativeInfinity;  // While Time.time is below this, the crash shove owns the velocity
     public Vector3 CurrentMovementDirection { get; private set; }
+    public float SteerInput { get; private set; }    // Raw -1..1 horizontal axis, ungated/unnormalized, for wheel-steer visuals
     private float wallMinZ = float.NegativeInfinity;  // Inner face of the low-Z wall (unbounded until found)
     private float wallMaxZ = float.PositiveInfinity;  // Inner face of the high-Z wall
 
@@ -35,8 +52,10 @@ public class PlayerController : MonoBehaviour
         playerRb = GetComponent<Rigidbody>();
         playerCollider = GetComponent<Collider>();                    // Used to keep the whole vehicle body inside the bounds
         playerRb.useGravity = false;                                 // Top-down game: no gravity, movement is script-driven
+        playerRb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
         playerRb.constraints = RigidbodyConstraints.FreezeRotation    // Keep the player upright
                              | RigidbodyConstraints.FreezePositionY;  // Lock to the ground plane (prevents jitter)
+        baseSpeed = speed;
         movementAction.Enable();                                     // Begin listening for input
 
         if (gameCamera == null)
@@ -66,6 +85,7 @@ public class PlayerController : MonoBehaviour
         if (gameManager != null && !gameManager.IsGameActive)
         {
             CurrentMovementDirection = Vector3.zero;
+            SteerInput = 0f;
             return;
         }
 
@@ -74,8 +94,28 @@ public class PlayerController : MonoBehaviour
         if (gameCamera == null)
             return;
 
+        // Just after a vehicle-vehicle crash, let physics (and the Bouncy material)
+        // carry the vehicle so the impact reads as a real bounce. Input resumes once
+        // the window closes; until then only keep the body inside the playable area.
+        if (Time.time < knockbackUntil)
+        {
+            Vector3 pos = playerRb.position;
+            float clampedX = Mathf.Clamp(pos.x, minX, maxX);
+            float clampedZ = Mathf.Clamp(pos.z, minZ, maxZ);
+            if (!Mathf.Approximately(pos.x, clampedX) || !Mathf.Approximately(pos.z, clampedZ))
+            {
+                playerRb.position = new Vector3(clampedX, pos.y, clampedZ);
+                Vector3 velocity = playerRb.linearVelocity;
+                if (!Mathf.Approximately(pos.x, clampedX)) velocity.x = 0f;
+                if (!Mathf.Approximately(pos.z, clampedZ)) velocity.z = 0f;
+                playerRb.linearVelocity = velocity;
+            }
+            return;
+        }
+
         float horizontalInput = movementInput.x;
         float verticalInput = movementInput.y;
+        SteerInput = horizontalInput;
 
         Vector3 screenRight = gameCamera.transform.right;
         screenRight.y = 0f;
@@ -99,12 +139,66 @@ public class PlayerController : MonoBehaviour
         playerRb.MovePosition(targetPosition);     // Move via physics so collisions are still respected
     }
 
-    public void BeginExitDrive()
+    public void BeginExitDrive(bool exitViaBottom = false)
     {
         isExiting = true;
+        SteerInput = 0f;   // Straighten the wheels; FixedUpdate no longer refreshes this once exiting
+        this.exitViaBottom = exitViaBottom;
         exitStartTime = Time.time;
         ResolveGameCamera();
-        exitDirection = ComputeScreenForward();
+        exitDirection = exitViaBottom ? -ComputeScreenForward() : ComputeScreenForward();
+    }
+
+    // Rebinds movement to the given key set. Called by GameManager when the
+    // player-count mode changes; replaces the serialized action so the prefab's
+    // authored bindings (both key sets) stay the single-player default.
+    public void ApplyControlScheme(ControlScheme scheme)
+    {
+        movementAction?.Disable();
+        movementAction = BuildMovementAction(scheme);
+        movementAction.Enable();
+    }
+
+    static InputAction BuildMovementAction(ControlScheme scheme)
+    {
+        var action = new InputAction("Movement", InputActionType.Value);
+        if (scheme != ControlScheme.ArrowsOnly && scheme != ControlScheme.ArrowsAndGamepad)
+        {
+            action.AddCompositeBinding("2DVector")
+                .With("Up", "<Keyboard>/w")
+                .With("Down", "<Keyboard>/s")
+                .With("Left", "<Keyboard>/a")
+                .With("Right", "<Keyboard>/d");
+        }
+        if (scheme != ControlScheme.WasdOnly)
+        {
+            action.AddCompositeBinding("2DVector")
+                .With("Up", "<Keyboard>/upArrow")
+                .With("Down", "<Keyboard>/downArrow")
+                .With("Left", "<Keyboard>/leftArrow")
+                .With("Right", "<Keyboard>/rightArrow");
+        }
+        if (scheme == ControlScheme.ArrowsAndGamepad)
+            action.AddBinding("<Gamepad>/leftStick");
+        return action;
+    }
+
+    // Called by GameManager when two vehicles crash: a brief physics-driven shove
+    // away from the other vehicle. The Bouncy physics material on the collider
+    // handles the contact itself; this gives the separation some visible energy.
+    public void ApplyCrashKnockback(Vector3 direction)
+    {
+        if (playerRb == null)
+            playerRb = GetComponent<Rigidbody>();
+        if (playerRb == null)
+            return;
+
+        direction.y = 0f;
+        if (direction.sqrMagnitude < 0.001f)
+            return;
+
+        knockbackUntil = Time.time + crashKnockbackDuration;
+        playerRb.linearVelocity = direction.normalized * crashKnockbackSpeed;
     }
 
     void ResolveGameCamera()
@@ -145,12 +239,15 @@ public class PlayerController : MonoBehaviour
 
         Bounds b = GetExitBounds();
         float halfAlong = Mathf.Abs(exitDirection.x) * b.extents.x + Mathf.Abs(exitDirection.z) * b.extents.z;
-        float threshold = ScreenEdgeUtility.TopAlongTravel(gameCamera, transform.position.y, exitDirection) + exitOffScreenMargin;
+        float threshold = (exitViaBottom
+            ? ScreenEdgeUtility.BottomAlongTravel(gameCamera, transform.position.y, exitDirection)
+            : ScreenEdgeUtility.TopAlongTravel(gameCamera, transform.position.y, exitDirection))
+            + exitOffScreenMargin;
         if (Vector3.Dot(b.center, exitDirection) - halfAlong > threshold)
         {
             isExiting = false;
             if (gameManager != null)
-                gameManager.OnVehicleExitComplete();
+                gameManager.OnVehicleExitComplete(this);
             else
                 enabled = false;
         }
@@ -245,11 +342,54 @@ public class PlayerController : MonoBehaviour
         wallMaxZ = faces.HighZ;
     }
 
+    public float GetApproachSpeed(Vector3 towardOther)
+    {
+        towardOther.y = 0f;
+        if (towardOther.sqrMagnitude < 0.001f)
+            return 0f;
+        return Mathf.Max(0f, Vector3.Dot(CurrentMovementDirection * speed, towardOther.normalized));
+    }
+
+    public void SetSpeedMultiplier(float multiplier)
+    {
+        if (baseSpeed <= 0.001f)
+            baseSpeed = speed;
+        speed = baseSpeed * multiplier;
+    }
+
+    public void ResetSpeedToBase()
+    {
+        speed = baseSpeed;
+    }
+
     private void OnCollisionEnter(Collision collision)
     {
-        // Hitting a rock costs time: the GameManager docks the timer, plays the impact
-        // sound, and kicks up dust at the point of contact.
-        if (collision.gameObject.CompareTag("Obstacle") && gameManager != null)
-            gameManager.OnPlayerHit(collision.GetContact(0).point);
+        // Two-player mode: vehicles can crash into each other. GameManager dedupes
+        // (both vehicles' OnCollisionEnter fire for the same contact) and applies
+        // the timer penalty plus the bounce knockback to both.
+        var otherVehicle = collision.gameObject.GetComponentInParent<PlayerController>();
+        if (otherVehicle != null && otherVehicle != this)
+        {
+            // While either vehicle is still being shoved apart, contacts can break and
+            // re-form every physics step; don't report those as fresh crashes.
+            if (Time.time < knockbackUntil || Time.time < otherVehicle.knockbackUntil)
+                return;
+
+            Vector3 vehicleHitPoint = collision.contactCount > 0
+                ? collision.GetContact(0).point
+                : playerRb.position;
+            if (gameManager != null)
+                gameManager.OnVehicleCollision(vehicleHitPoint, this, otherVehicle);
+            return;
+        }
+
+        // MoveDown owns the full hit response (timer penalty, knock-aside, destroy FX).
+        if (!collision.gameObject.CompareTag("Obstacle"))
+            return;
+
+        Vector3 hitPoint = collision.contactCount > 0
+            ? collision.GetContact(0).point
+            : playerRb.position;
+        collision.gameObject.GetComponent<MoveDown>()?.RegisterPlayerHit(hitPoint, transform);
     }
 }
