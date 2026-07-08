@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
@@ -5,79 +6,138 @@ using UnityEngine;
 public class WallSpawnManagerTests
 {
     [Test]
-    public void OnSegmentLeftScreen_SnapsAheadOfLeadSegmentInSameLane()
+    public void OnSegmentLeftScreen_SnapsDirectlyBehindPartnerTile()
     {
-        const float spacing = 3f;
         const float laneZ = 11.5f;
+        const float tileLength = 6f;
 
-        var grassObject = new GameObject("Grass");
+        var grassObject = CreateGrassObject();
         var grassScroller = grassObject.AddComponent<GroundScroller>();
+        SetPrivateField(grassScroller, "scrollDirection", new Vector2(-1f, 0f)); // world -X
 
         var spawnObject = new GameObject("WallSpawnManager");
         var spawnManager = spawnObject.AddComponent<WallSpawnManager>();
         SetPrivateField(spawnManager, "grassScroller", grassScroller);
-        SetPrivateField(spawnManager, "segmentSpacing", spacing);
-        SetPrivateField(spawnManager, "spacingMeasured", true);
-        SetPrivateField(spawnManager, "segmentY", 0.05f);
 
-        var leadObject = new GameObject("LeadSegment");
-        leadObject.transform.position = new Vector3(20f, 0.05f, laneZ);
-        var leadScroller = leadObject.AddComponent<WallScroller>();
-        leadScroller.LaneZ = laneZ;
+        var partnerObject = new GameObject("PartnerTile");
+        partnerObject.transform.position = new Vector3(20f, 0.05f, laneZ);
+        var partnerScroller = partnerObject.AddComponent<WallScroller>();
+        partnerScroller.LaneZ = laneZ;
 
-        var trailingObject = new GameObject("TrailingSegment");
-        trailingObject.transform.position = new Vector3(5f, 0.05f, laneZ);
-        var trailingScroller = trailingObject.AddComponent<WallScroller>();
-        trailingScroller.LaneZ = laneZ;
+        var exitingObject = new GameObject("ExitingTile");
+        exitingObject.transform.position = new Vector3(5f, 0.05f, laneZ);
+        var exitingScroller = exitingObject.AddComponent<WallScroller>();
+        exitingScroller.LaneZ = laneZ;
+        SetPrivateField(exitingScroller, "tileLength", tileLength);
 
-        spawnManager.OnSegmentLeftScreen(trailingScroller);
+        SetLanePairs(spawnManager, (exitingScroller, partnerScroller));
 
-        float expectedX = 20f + spacing;
-        Assert.That(trailingObject.transform.position.x, Is.EqualTo(expectedX).Within(0.01f));
-        Assert.That(trailingObject.transform.position.z, Is.EqualTo(laneZ).Within(0.01f));
+        spawnManager.OnSegmentLeftScreen(exitingScroller);
 
-        Object.DestroyImmediate(leadObject);
-        Object.DestroyImmediate(trailingObject);
+        float expectedX = 20f + tileLength;
+        Assert.That(exitingObject.transform.position.x, Is.EqualTo(expectedX).Within(0.01f));
+        Assert.That(exitingObject.transform.position.z, Is.EqualTo(laneZ).Within(0.01f));
+
+        Object.DestroyImmediate(partnerObject);
+        Object.DestroyImmediate(exitingObject);
         Object.DestroyImmediate(spawnObject);
         Object.DestroyImmediate(grassObject);
     }
 
     [Test]
-    public void OnSegmentLeftScreen_IgnoresSegmentsInOtherLanes()
+    public void OnSegmentLeftScreen_DoesNothingWhenTileHasNoRegisteredPartner()
     {
-        const float spacing = 3f;
-        const float laneZ = 11.5f;
-        const float otherLaneZ = -7.9f;
-
-        var grassObject = new GameObject("Grass");
+        var grassObject = CreateGrassObject();
         var grassScroller = grassObject.AddComponent<GroundScroller>();
+        SetPrivateField(grassScroller, "scrollDirection", new Vector2(-1f, 0f));
 
         var spawnObject = new GameObject("WallSpawnManager");
         var spawnManager = spawnObject.AddComponent<WallSpawnManager>();
         SetPrivateField(spawnManager, "grassScroller", grassScroller);
-        SetPrivateField(spawnManager, "segmentSpacing", spacing);
-        SetPrivateField(spawnManager, "spacingMeasured", true);
-        SetPrivateField(spawnManager, "segmentY", 0.05f);
-        SetPrivateField(spawnManager, "spawnX", 12f);
+        // No lane pairs registered -- simulates a stray tile that isn't part of any lane.
 
-        var otherLaneObject = new GameObject("OtherLaneSegment");
-        otherLaneObject.transform.position = new Vector3(30f, 0.05f, otherLaneZ);
-        var otherLaneScroller = otherLaneObject.AddComponent<WallScroller>();
-        otherLaneScroller.LaneZ = otherLaneZ;
+        var loneObject = new GameObject("LoneTile");
+        loneObject.transform.position = new Vector3(5f, 0.05f, 11.5f);
+        var loneScroller = loneObject.AddComponent<WallScroller>();
+        loneScroller.LaneZ = 11.5f;
 
-        var trailingObject = new GameObject("TrailingSegment");
-        trailingObject.transform.position = new Vector3(5f, 0.05f, laneZ);
-        var trailingScroller = trailingObject.AddComponent<WallScroller>();
-        trailingScroller.LaneZ = laneZ;
+        spawnManager.OnSegmentLeftScreen(loneScroller);
 
-        spawnManager.OnSegmentLeftScreen(trailingScroller);
+        Assert.That(loneObject.transform.position.x, Is.EqualTo(5f).Within(0.01f));
 
-        Assert.That(trailingObject.transform.position.x, Is.EqualTo(12f).Within(0.01f));
-
-        Object.DestroyImmediate(otherLaneObject);
-        Object.DestroyImmediate(trailingObject);
+        Object.DestroyImmediate(loneObject);
         Object.DestroyImmediate(spawnObject);
         Object.DestroyImmediate(grassObject);
+    }
+
+    [Test]
+    public void OnSegmentLeftScreen_DoesNothingWhenWorldIsNotAnimating()
+    {
+        const float laneZ = 11.5f;
+        const float tileLength = 6f;
+
+        var grassObject = CreateGrassObject();
+        var grassScroller = grassObject.AddComponent<GroundScroller>();
+        SetPrivateField(grassScroller, "scrollDirection", new Vector2(-1f, 0f));
+
+        var spawnObject = new GameObject("WallSpawnManager");
+        var spawnManager = spawnObject.AddComponent<WallSpawnManager>();
+        SetPrivateField(spawnManager, "grassScroller", grassScroller);
+
+        var managerObject = new GameObject("GameManager");
+        var gameManager = managerObject.AddComponent<GameManager>();
+        SetPrivateField(spawnManager, "gameManager", gameManager);
+        SetPrivateProperty(gameManager, "IsGameActive", false);
+        SetPrivateProperty(gameManager, "IsVehicleExiting", false);
+        SetPrivateProperty(gameManager, "IsPaused", false);
+
+        var partnerObject = new GameObject("PartnerTile");
+        partnerObject.transform.position = new Vector3(20f, 0.05f, laneZ);
+        var partnerScroller = partnerObject.AddComponent<WallScroller>();
+
+        var exitingObject = new GameObject("ExitingTile");
+        exitingObject.transform.position = new Vector3(5f, 0.05f, laneZ);
+        var exitingScroller = exitingObject.AddComponent<WallScroller>();
+        SetPrivateField(exitingScroller, "tileLength", tileLength);
+
+        SetLanePairs(spawnManager, (exitingScroller, partnerScroller));
+
+        spawnManager.OnSegmentLeftScreen(exitingScroller);
+
+        Assert.That(exitingObject.transform.position.x, Is.EqualTo(5f).Within(0.01f));
+
+        Object.DestroyImmediate(partnerObject);
+        Object.DestroyImmediate(exitingObject);
+        Object.DestroyImmediate(managerObject);
+        Object.DestroyImmediate(spawnObject);
+        Object.DestroyImmediate(grassObject);
+    }
+
+    // GroundScroller carries [RequireComponent(typeof(Renderer))]; a bare GameObject can't
+    // satisfy that (Renderer is abstract), so AddComponent<GroundScroller>() fails unless a
+    // concrete renderer already exists.
+    private static GameObject CreateGrassObject()
+    {
+        var grassObject = new GameObject("Grass");
+        grassObject.AddComponent<MeshRenderer>();
+        var meshFilter = grassObject.AddComponent<MeshFilter>();
+        meshFilter.sharedMesh = Resources.GetBuiltinResource<Mesh>("Cube.fbx");
+        return grassObject;
+    }
+
+    private static void SetLanePairs(WallSpawnManager manager, params (WallScroller, WallScroller)[] pairs)
+    {
+        var field = typeof(WallSpawnManager).GetField("lanePairs", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(field, "Could not find private field 'lanePairs' on WallSpawnManager.");
+        var list = new List<(WallScroller a, WallScroller b)>(pairs);
+        field.SetValue(manager, list);
+    }
+
+    private static void SetPrivateProperty(object target, string propertyName, object value)
+    {
+        var property = target.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
+        Assert.IsNotNull(property, $"Could not find property '{propertyName}' on {target.GetType()}.");
+        property.SetValue(target, value);
     }
 
     private static void SetPrivateField(object target, string fieldName, object value)
