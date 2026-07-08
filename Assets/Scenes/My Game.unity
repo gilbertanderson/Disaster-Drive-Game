@@ -1612,6 +1612,10 @@ PrefabInstance:
       propertyPath: m_IsActive
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 6852832224905165448, guid: f41fc8de3b857f04b8ab582ab168e44e, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents:
     - {fileID: 1358638595664253311, guid: f41fc8de3b857f04b8ab582ab168e44e, type: 3}
     - {fileID: 2459679570474442867, guid: f41fc8de3b857f04b8ab582ab168e44e, type: 3}
@@ -4484,6 +4488,10 @@ PrefabInstance:
       value: SURVIVAL ARMORED TRUCK 1
       objectReference: {fileID: 0}
     - target: {fileID: 7816525166893240110, guid: f41fc8de3b857f04b8ab582ab168e44e, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6852832224905165448, guid: f41fc8de3b857f04b8ab582ab168e44e, type: 3}
       propertyPath: m_IsActive
       value: 0
       objectReference: {fileID: 0}
