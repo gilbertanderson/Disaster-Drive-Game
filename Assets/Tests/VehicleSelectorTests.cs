@@ -312,6 +312,30 @@ public class VehicleSelectorTests
     }
 
     [Test]
+    public void TickWheelSpin_PreservesBakedImportCorrectionRotation()
+    {
+        // Some FBX packs (e.g. a Z-up-authored model) bake a fixed correction rotation into
+        // every sub-mesh's transform so it renders right-side up under Unity's Y-up convention.
+        // CacheWheels must capture that as the wheel's base rotation, and TickWheelSpin must
+        // roll on top of it rather than overwriting it outright.
+        var wheel = CreateWheelChild(vehicleVisual, "Wheel_RL", new Vector3(0f, 0f, -1f));
+        var bakedCorrection = Quaternion.Euler(270f, 0f, 0f);
+        wheel.transform.localRotation = bakedCorrection;
+        InvokePrivateMethod("CacheWheels");
+
+        var scroller = groundGameObject.GetComponent<GroundScroller>();
+        SetPrivateField(scroller, "worldScrollSpeed", 6f);
+
+        const float deltaTime = 0.1f;
+        selector.TickWheelSpin(deltaTime, true);
+
+        float expectedDegrees = Mathf.Repeat(VehicleSelector.WheelSpinDegreesPerSecond(6f, 0.5f) * deltaTime * -1f, 360f);
+        Quaternion expected = bakedCorrection * Quaternion.AngleAxis(expectedDegrees, Vector3.right);
+        Assert.That(Quaternion.Angle(wheel.transform.localRotation, expected), Is.LessThan(0.5f),
+            "Roll should compose on top of the baked correction rotation, not replace it.");
+    }
+
+    [Test]
     public void TickWheelSpin_FlipsDirectionWithWorldMoveDirection()
     {
         var wheel = CreateWheelChild(vehicleVisual, "Wheel_RL", new Vector3(0f, 0f, -1f));

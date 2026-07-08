@@ -659,9 +659,14 @@ public class VehicleSelector : MonoBehaviour
             float degrees = WheelSpinDegreesPerSecond(speed, wheelRadii[i]) * sign * deltaTime;
             wheelRollAngles[i] = Mathf.Repeat(wheelRollAngles[i] + degrees, 360f);
 
+            // Roll happens in the mesh's own object space (innermost), then the baked
+            // import-correction rotation (e.g. a Z-up->Y-up FBX fixup) re-orients that into
+            // the parent's frame, then steer yaws the already-corrected wheel (outermost).
+            // With an identity base rotation this collapses to the original formula exactly.
+            Quaternion roll = wheelBaseRotations[i] * Quaternion.AngleAxis(wheelRollAngles[i], Vector3.right);
             wheel.localRotation = wheelIsFront[i]
-                ? Quaternion.AngleAxis(currentSteerAngle, Vector3.up) * Quaternion.AngleAxis(wheelRollAngles[i], Vector3.right)
-                : Quaternion.AngleAxis(wheelRollAngles[i], Vector3.right);
+                ? Quaternion.AngleAxis(currentSteerAngle, Vector3.up) * roll
+                : roll;
         }
     }
 
