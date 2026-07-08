@@ -1237,7 +1237,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Game::GameplayCameraDirector
   introRig: {fileID: 2100000001}
   frontAnchor: {fileID: 2100000003}
-  leftAnchor: {fileID: 2100000005}
+  leftAnchor: {fileID: 0}
   behindAnchor: {fileID: 2100000007}
   cameraShake: {fileID: 330585548}
   beatDuration: 0.8
@@ -3234,7 +3234,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 190, y: -100}
+  m_AnchoredPosition: {x: 170, y: -100}
   m_SizeDelta: {x: 76, y: 84}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &618872770
@@ -5612,7 +5612,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 780, y: -100}
+  m_AnchoredPosition: {x: 248, y: -100}
   m_SizeDelta: {x: 76, y: 84}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1300389640
@@ -8408,7 +8408,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -190, y: -100}
+  m_AnchoredPosition: {x: -170, y: -100}
   m_SizeDelta: {x: 76, y: 84}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1965538157
@@ -8957,7 +8957,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 500, y: -100}
+  m_AnchoredPosition: {x: 170, y: -100}
   m_SizeDelta: {x: 76, y: 84}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1995029717
