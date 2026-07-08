@@ -546,6 +546,11 @@ public class VehicleSelector : MonoBehaviour
         if (visual == null)
             return;
 
+        // The Jeep's wheel meshes don't roll convincingly with this generic spin logic
+        // (confirmed visually), so it's excluded and left with static wheels.
+        if (visual.name == "Prefab_K-131")
+            return;
+
         var renderers = visual.GetComponentsInChildren<MeshRenderer>(false);
         var wheels = new List<Transform>(4);
         var radii = new List<float>(4);

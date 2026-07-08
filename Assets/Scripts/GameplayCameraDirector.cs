@@ -6,7 +6,6 @@ public class GameplayCameraDirector : MonoBehaviour
 {
     [SerializeField] private Transform introRig;
     [SerializeField] private Transform frontAnchor;
-    [SerializeField] private Transform leftAnchor;
     [SerializeField] private Transform behindAnchor;
     [SerializeField] private CameraShake cameraShake;
     [SerializeField] private float beatDuration = 0.8f;
@@ -108,7 +107,7 @@ public class GameplayCameraDirector : MonoBehaviour
 
     bool HasValidAnchors()
     {
-        return introRig != null && frontAnchor != null && leftAnchor != null && behindAnchor != null;
+        return introRig != null && frontAnchor != null && behindAnchor != null;
     }
 
     void PositionRigAtFocalPoint(IReadOnlyList<Transform> vehicleRoots)
@@ -139,12 +138,9 @@ public class GameplayCameraDirector : MonoBehaviour
         switch (beatIndex)
         {
             case 0:
+            case 1:
                 position = frontAnchor.position;
                 rotation = frontAnchor.rotation;
-                break;
-            case 1:
-                position = leftAnchor.position;
-                rotation = leftAnchor.rotation;
                 break;
             case 2:
                 position = behindAnchor.position;

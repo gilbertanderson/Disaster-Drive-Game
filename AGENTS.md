@@ -26,6 +26,7 @@
 - When making gameplay changes, check the relevant prefab and scene semantics before changing emitter placement or collider sizing.
 - Avoid broad refactors that touch Unity-generated project files unless the user explicitly asks for project cleanup or migration.
 - If asked to implement tests or verify behavior, recommend the Unity Editor Test Runner and note that there is no visible CLI test runner configured.
+- **Always work in a new branch or git worktree, never directly on `dev`/`main`.** When multiple agents (or agent sessions) operate on this repo concurrently, working on a shared branch causes overwritten files and clobbered edits. Before starting a task, create a new branch (or `git worktree add` a new checkout) and do all edits there; open a PR to merge back rather than committing straight to the primary branch.
 
 ## Notes for future customization
 - If the repo later gets additional AI customization files, preserve them and keep this guidance focused on project-level instructions.
