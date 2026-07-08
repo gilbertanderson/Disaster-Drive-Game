@@ -50,6 +50,9 @@ public class MoveDown : MonoBehaviour
         objectRb = GetComponent<Rigidbody>();
         rockCollider = GetComponent<BoxCollider>();
         objectRb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
+        // MovePosition steps at the fixed timestep; without interpolation the rock
+        // visibly judders against the trees/ground, which scroll every rendered frame.
+        objectRb.interpolation = RigidbodyInterpolation.Interpolate;
         gameManager = FindAnyObjectByType<GameManager>();
         players = FindObjectsByType<PlayerController>(FindObjectsSortMode.None);
         if (players.Length > 0)
