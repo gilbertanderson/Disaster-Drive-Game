@@ -7,7 +7,6 @@ public class GameplayCameraDirectorTests
     private GameObject cameraObject;
     private GameObject rigObject;
     private GameObject frontAnchorObject;
-    private GameObject leftAnchorObject;
     private GameObject behindAnchorObject;
     private CameraShake cameraShake;
     private GameplayCameraDirector director;
@@ -23,8 +22,6 @@ public class GameplayCameraDirectorTests
         rigObject = new GameObject("IntroCameraRig");
         frontAnchorObject = CreateAnchor("IntroCameraFront", rigObject.transform,
             new Vector3(-6f, 6f, -1f), Quaternion.Euler(35f, 0f, 0f));
-        leftAnchorObject = CreateAnchor("IntroCameraLeft", rigObject.transform,
-            new Vector3(-10f, 5.5f, 1f), Quaternion.Euler(35f, 90f, 0f));
         behindAnchorObject = CreateAnchor("IntroCameraBehind", rigObject.transform,
             new Vector3(0f, 6f, 8f), Quaternion.Euler(35f, 180f, 0f));
 
@@ -33,7 +30,6 @@ public class GameplayCameraDirectorTests
 
         SetPrivateField(director, "introRig", rigObject.transform);
         SetPrivateField(director, "frontAnchor", frontAnchorObject.transform);
-        SetPrivateField(director, "leftAnchor", leftAnchorObject.transform);
         SetPrivateField(director, "behindAnchor", behindAnchorObject.transform);
         SetPrivateField(director, "cameraShake", cameraShake);
         SetPrivateField(director, "beatDuration", 0.8f);
@@ -67,7 +63,7 @@ public class GameplayCameraDirectorTests
         Assert.That(Vector3.Distance(cameraObject.transform.position, frontAnchorObject.transform.position), Is.LessThan(0.1f));
 
         AdvanceBeat(1);
-        Assert.That(Vector3.Distance(cameraObject.transform.position, leftAnchorObject.transform.position), Is.LessThan(0.1f));
+        Assert.That(Vector3.Distance(cameraObject.transform.position, frontAnchorObject.transform.position), Is.LessThan(0.1f));
 
         AdvanceBeat(2);
         Assert.That(Vector3.Distance(cameraObject.transform.position, behindAnchorObject.transform.position), Is.LessThan(0.1f));
