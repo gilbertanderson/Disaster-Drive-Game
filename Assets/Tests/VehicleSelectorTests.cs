@@ -220,12 +220,196 @@ public class VehicleSelectorTests
         }
     }
 
+    [Test]
+    public void CacheWheels_IncludesOnlyMeshWheelsExcludingSteeringWheelAndWheelColliders()
+    {
+        var frontLeft = CreateWheelChild(vehicleVisual, "Wheel_FL", new Vector3(-1f, 0f, 2f));
+        var steeringWheel = CreateWheelChild(vehicleVisual, "SM_Veh_Convertable_SteeringW", new Vector3(0f, 0.5f, 1f));
+        var physicsWheel = CreateWheelChild(vehicleVisual, "Wheel_Physics", new Vector3(1f, 0f, 2f));
+        physicsWheel.AddComponent<WheelCollider>();
+
+        var group = new GameObject("wheels");
+        group.transform.parent = vehicleVisual.transform;
+        var rearLeft = CreateWheelChild(group, "Wheel_RL", new Vector3(-1f, 0f, -2f));
+
+        InvokePrivateMethod("CacheWheels");
+
+        var wheels = GetPrivateField<Transform[]>(selector, "wheelTransforms");
+        Assert.That(wheels.Length, Is.EqualTo(2));
+        // Transform implements IEnumerable (over its children), so NUnit's CollectionAssert
+        // compares wheel entries structurally (as sequences of children) rather than by
+        // identity - every leaf cube here has no children, so they'd all read as "equal".
+        // Array.IndexOf uses UnityEngine.Object's identity-based Equals instead.
+        Assert.That(System.Array.IndexOf(wheels, frontLeft.transform), Is.GreaterThanOrEqualTo(0));
+        Assert.That(System.Array.IndexOf(wheels, rearLeft.transform), Is.GreaterThanOrEqualTo(0));
+        Assert.That(System.Array.IndexOf(wheels, steeringWheel.transform), Is.EqualTo(-1));
+        Assert.That(System.Array.IndexOf(wheels, physicsWheel.transform), Is.EqualTo(-1));
+    }
+
+    [Test]
+    public void CacheWheels_ClassifiesFrontWheelsByHighestLocalZ()
+    {
+        var frontLeft = CreateWheelChild(vehicleVisual, "Wheel_FL", new Vector3(-1f, 0f, 2f));
+        var frontRight = CreateWheelChild(vehicleVisual, "Wheel_FR", new Vector3(1f, 0f, 2f));
+        var rearLeft = CreateWheelChild(vehicleVisual, "Wheel_RL", new Vector3(-1f, 0f, -2f));
+        var rearRight = CreateWheelChild(vehicleVisual, "Wheel_RR", new Vector3(1f, 0f, -2f));
+
+        InvokePrivateMethod("CacheWheels");
+
+        var wheels = GetPrivateField<Transform[]>(selector, "wheelTransforms");
+        var isFront = GetPrivateField<bool[]>(selector, "wheelIsFront");
+
+        for (int i = 0; i < wheels.Length; i++)
+        {
+            bool expectedFront = wheels[i] == frontLeft.transform || wheels[i] == frontRight.transform;
+            Assert.That(isFront[i], Is.EqualTo(expectedFront), $"Wheel '{wheels[i].name}' front classification mismatch.");
+        }
+        Assert.That(rearLeft, Is.Not.Null);
+        Assert.That(rearRight, Is.Not.Null);
+    }
+
+    [Test]
+    public void WheelSpinDegreesPerSecond_ScalesWithSpeedAndInverselyWithRadius()
+    {
+        Assert.That(VehicleSelector.WheelSpinDegreesPerSecond(0f, 0.5f), Is.EqualTo(0f));
+        Assert.That(VehicleSelector.WheelSpinDegreesPerSecond(5f, 0f), Is.EqualTo(0f));
+
+        float fullRadius = VehicleSelector.WheelSpinDegreesPerSecond(5f, 0.5f);
+        float halfRadius = VehicleSelector.WheelSpinDegreesPerSecond(5f, 0.25f);
+        Assert.That(halfRadius, Is.EqualTo(fullRadius * 2f).Within(0.001f));
+    }
+
+    [Test]
+    public void TickWheelSpin_DoesNothingWhenNotDriving()
+    {
+        var wheel = CreateWheelChild(vehicleVisual, "Wheel_RL", new Vector3(0f, 0f, -1f));
+        InvokePrivateMethod("CacheWheels");
+
+        var before = wheel.transform.localRotation;
+        selector.TickWheelSpin(1f, false);
+
+        Assert.That(wheel.transform.localRotation, Is.EqualTo(before));
+    }
+
+    [Test]
+    public void TickWheelSpin_RotatesWheelProportionalToWorldSpeed()
+    {
+        var wheel = CreateWheelChild(vehicleVisual, "Wheel_RL", new Vector3(0f, 0f, -1f));
+        InvokePrivateMethod("CacheWheels");
+
+        var scroller = groundGameObject.GetComponent<GroundScroller>();
+        SetPrivateField(scroller, "worldScrollSpeed", 6f);
+
+        const float deltaTime = 0.1f;
+        selector.TickWheelSpin(deltaTime, true);
+
+        // Default WorldMoveDirection is (0,0,-1) with an identity-rotated visual, which
+        // ComputeSpinSign maps to a negative spin sign (see VehicleSelector.cs).
+        float expectedDegrees = Mathf.Repeat(VehicleSelector.WheelSpinDegreesPerSecond(6f, 0.5f) * deltaTime * -1f, 360f);
+        Vector3 euler = wheel.transform.localRotation.eulerAngles;
+        Assert.That(euler.x, Is.EqualTo(expectedDegrees).Within(0.01f));
+        Assert.That(Mathf.Abs(Mathf.DeltaAngle(euler.y, 0f)), Is.LessThan(0.01f), "A rear wheel should not steer.");
+    }
+
+    [Test]
+    public void TickWheelSpin_FlipsDirectionWithWorldMoveDirection()
+    {
+        var wheel = CreateWheelChild(vehicleVisual, "Wheel_RL", new Vector3(0f, 0f, -1f));
+        InvokePrivateMethod("CacheWheels");
+
+        var scroller = groundGameObject.GetComponent<GroundScroller>();
+        SetPrivateField(scroller, "worldScrollSpeed", 6f);
+
+        selector.TickWheelSpin(0.1f, true);
+        float forwardDelta = Mathf.DeltaAngle(0f, wheel.transform.localEulerAngles.x);
+
+        wheel.transform.localRotation = Quaternion.identity;
+        SetPrivateField(selector, "wheelRollAngles", new float[] { 0f });
+        SetPrivateField(scroller, "scrollDirection", new Vector2(0f, 1f));
+
+        selector.TickWheelSpin(0.1f, true);
+        float backwardDelta = Mathf.DeltaAngle(0f, wheel.transform.localEulerAngles.x);
+
+        Assert.That(Mathf.Sign(forwardDelta), Is.Not.EqualTo(Mathf.Sign(backwardDelta)));
+    }
+
+    [Test]
+    public void TickWheelSpin_SteersFrontWheelTowardPlayerSteerInput()
+    {
+        var frontWheel = CreateWheelChild(vehicleVisual, "Wheel_FL", new Vector3(-1f, 0f, 2f));
+        var rearWheel = CreateWheelChild(vehicleVisual, "Wheel_RL", new Vector3(-1f, 0f, -2f));
+        InvokePrivateMethod("CacheWheels");
+
+        // Zero the road speed so no roll is baked into the same quaternion as the steer
+        // angle - combining rotation about two different axes doesn't decompose back into
+        // clean, independent Euler components, so isolating steer requires roll = 0 here.
+        var scroller = groundGameObject.GetComponent<GroundScroller>();
+        SetPrivateField(scroller, "worldScrollSpeed", 0f);
+
+        var controllerObject = new GameObject("PlayerController");
+        var controller = controllerObject.AddComponent<PlayerController>();
+        SetPrivateSteerInput(controller, 1f);
+        SetPrivateField(selector, "playerController", controller);
+
+        selector.TickWheelSpin(1f, true);   // Large deltaTime so MoveTowards fully reaches the target angle
+
+        float frontSteerY = Mathf.DeltaAngle(0f, frontWheel.transform.localEulerAngles.y);
+        float rearSteerY = Mathf.DeltaAngle(0f, rearWheel.transform.localEulerAngles.y);
+
+        Assert.That(frontSteerY, Is.EqualTo(28f).Within(0.5f));
+        Assert.That(rearSteerY, Is.EqualTo(0f).Within(0.5f), "A rear wheel should not steer.");
+
+        Object.DestroyImmediate(controllerObject);
+    }
+
+    [Test]
+    public void Apply_RebuildsWheelCacheWhenVehicleChanges()
+    {
+        var wheelOnSecondVehicle = CreateWheelChild(vehicleVisual2, "Wheel_RL", new Vector3(0f, 0f, -1f));
+
+        PlayerPrefs.SetInt("VehicleIndex", 0);
+        InvokePrivateMethod("Awake");
+
+        var wheelsAtStart = GetPrivateField<Transform[]>(selector, "wheelTransforms");
+        Assert.That(wheelsAtStart.Length, Is.EqualTo(0));
+
+        selector.NextVehicle();
+
+        var wheelsAfterSwitch = GetPrivateField<Transform[]>(selector, "wheelTransforms");
+        Assert.That(wheelsAfterSwitch.Length, Is.EqualTo(1));
+        Assert.That(wheelsAfterSwitch[0], Is.SameAs(wheelOnSecondVehicle.transform));
+    }
+
+    private static GameObject CreateWheelChild(GameObject parent, string name, Vector3 localPosition)
+    {
+        var wheel = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        wheel.name = name;
+        wheel.transform.parent = parent.transform;
+        wheel.transform.localPosition = localPosition;
+        return wheel;
+    }
+
+    private static void SetPrivateSteerInput(PlayerController controller, float value)
+    {
+        var property = typeof(PlayerController).GetProperty("SteerInput",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.IsNotNull(property, "Could not find property 'SteerInput' on PlayerController.");
+        property.SetValue(controller, value);
+    }
+
     private static GameObject[] GetPrivateVehicleVisuals(VehicleSelector target)
     {
         var field = typeof(VehicleSelector).GetField("vehicleVisuals",
             BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.IsNotNull(field, "Could not find private field 'vehicleVisuals' on VehicleSelector.");
         return (GameObject[])field.GetValue(target);
+    }
+
+    private static T GetPrivateField<T>(object target, string fieldName)
+    {
+        var field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(field, $"Could not find private field '{fieldName}' on {target.GetType()}.");
+        return (T)field.GetValue(target);
     }
 
     private static void SetPrivateField(object target, string fieldName, object value)

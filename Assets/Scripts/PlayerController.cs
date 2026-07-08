@@ -42,6 +42,7 @@ public class PlayerController : MonoBehaviour
     private Vector3 exitDirection;
     private float knockbackUntil = float.NegativeInfinity;  // While Time.time is below this, the crash shove owns the velocity
     public Vector3 CurrentMovementDirection { get; private set; }
+    public float SteerInput { get; private set; }    // Raw -1..1 horizontal axis, ungated/unnormalized, for wheel-steer visuals
     private float wallMinZ = float.NegativeInfinity;  // Inner face of the low-Z wall (unbounded until found)
     private float wallMaxZ = float.PositiveInfinity;  // Inner face of the high-Z wall
 
@@ -84,6 +85,7 @@ public class PlayerController : MonoBehaviour
         if (gameManager != null && !gameManager.IsGameActive)
         {
             CurrentMovementDirection = Vector3.zero;
+            SteerInput = 0f;
             return;
         }
 
@@ -113,6 +115,7 @@ public class PlayerController : MonoBehaviour
 
         float horizontalInput = movementInput.x;
         float verticalInput = movementInput.y;
+        SteerInput = horizontalInput;
 
         Vector3 screenRight = gameCamera.transform.right;
         screenRight.y = 0f;
@@ -139,6 +142,7 @@ public class PlayerController : MonoBehaviour
     public void BeginExitDrive(bool exitViaBottom = false)
     {
         isExiting = true;
+        SteerInput = 0f;   // Straighten the wheels; FixedUpdate no longer refreshes this once exiting
         this.exitViaBottom = exitViaBottom;
         exitStartTime = Time.time;
         ResolveGameCamera();

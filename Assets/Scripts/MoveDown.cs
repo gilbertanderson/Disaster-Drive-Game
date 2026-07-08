@@ -65,14 +65,7 @@ public class MoveDown : MonoBehaviour
         spawnRotation = objectRb.rotation;                    // ...and its upright orientation to restore later
 
         // Figure out which world direction points down the screen on the ground plane.
-        Vector3 screenUp = gameCamera.transform.forward;      // For an angled camera, forward is the screen-up axis
-        screenUp.y = 0f;
-        if (screenUp.sqrMagnitude < 0.001f)                   // Top-down camera looks straight down...
-            screenUp = gameCamera.transform.up;               // ...so "screen up" lives on the camera's up axis
-        screenUp.y = 0f;
-        screenUp.Normalize();
-
-        moveDirection = -screenUp;                            // Down the screen is the opposite of screen up
+        moveDirection = ScreenEdgeUtility.ComputeTravelDirection(gameCamera);
 
         // Project the bottom edge of the screen onto the travel axis so we know when we've gone off-screen.
         bottomThreshold = ScreenEdgeUtility.BottomAlongTravel(gameCamera, transform.position.y, moveDirection) + wrapMargin;

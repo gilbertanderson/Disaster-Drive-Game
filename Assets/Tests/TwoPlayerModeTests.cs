@@ -121,6 +121,12 @@ public class TwoPlayerModeTests
         Assert.IsFalse(eliminated[1]);
         Assert.IsTrue(gameManager.IsGameActive, "The run continues while Player 2 still has time.");
         Assert.IsTrue(gameManager.IsVehicleExiting, "The eliminated vehicle should start its exit drive.");
+
+        // No camera is wired up in this test rig, so ComputeScreenForward() falls back to
+        // Vector3.forward; being out early should drive the loser off the opposite (bottom) edge.
+        Assert.That(GetPrivateField<Vector3>(player1, "exitDirection"),
+            Is.EqualTo(Vector3.back).Using(Vector3EqualityComparer.Instance),
+            "A player eliminated while the other still races should exit via the bottom of the screen.");
     }
 
     [Test]
@@ -135,6 +141,14 @@ public class TwoPlayerModeTests
         Assert.IsTrue(eliminated[0]);
         Assert.IsTrue(eliminated[1]);
         Assert.IsFalse(gameManager.IsGameActive);
+
+        // Player 1 was out early (bottom exit); Player 2 survived to the match's natural end
+        // and should still exit via the top like a normal successful finish.
+        Assert.That(GetPrivateField<Vector3>(player1, "exitDirection"),
+            Is.EqualTo(Vector3.back).Using(Vector3EqualityComparer.Instance));
+        Assert.That(GetPrivateField<Vector3>(player2, "exitDirection"),
+            Is.EqualTo(Vector3.forward).Using(Vector3EqualityComparer.Instance),
+            "The last surviving player's end-of-match exit should still head toward the top.");
     }
 
     [Test]

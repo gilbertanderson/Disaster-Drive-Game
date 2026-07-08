@@ -20,11 +20,20 @@ public class VehicleSelector : MonoBehaviour
     [SerializeField] private float targetFootprint;  // 0 = auto median horizontal extent across all visuals
     [SerializeField] private float[] speedMultipliers;
     [SerializeField] private float[] hitboxScaleMultipliers;
+    [SerializeField] private float maxSteerAngleDegrees = 28f;     // Visual front-wheel lock angle
+    [SerializeField] private float steerResponseDegPerSec = 220f;  // How fast the visual steer angle catches up to input
 
 
     private int index;
     private GameManager gameManager;
     private GroundScroller groundScroller;
+    private PlayerController playerController;
+    private Transform[] wheelTransforms = System.Array.Empty<Transform>();
+    private float[] wheelRadii = System.Array.Empty<float>();
+    private bool[] wheelIsFront = System.Array.Empty<bool>();
+    private float[] wheelRollAngles = System.Array.Empty<float>();
+    private Quaternion[] wheelBaseRotations = System.Array.Empty<Quaternion>();
+    private float currentSteerAngle;
 
     public int CurrentIndex => index;
 
@@ -36,6 +45,7 @@ public class VehicleSelector : MonoBehaviour
         gameManager = FindAnyObjectByType<GameManager>();
         if (groundScroller == null)
             groundScroller = FindAnyObjectByType<GroundScroller>();
+        playerController = GetComponent<PlayerController>();
 
         // Particle velocity must follow emitter rotation, which requires local simulation space.
         if (dirtEmitters != null)
@@ -82,11 +92,14 @@ public class VehicleSelector : MonoBehaviour
                 NextVehicle();
         }
 
-        // The dirt spray only runs while actually "driving" (mid-run, not paused).
+        // Wheel roll/steer and the dirt spray both only run while actually "driving"
+        // (mid-run or the post-game-over exit drive, not paused).
+        bool driving = gameManager != null && gameManager.IsWorldAnimating;
+        TickWheelSpin(Time.deltaTime, driving);
+
         if (dirtEmitters == null)
             return;
 
-        bool driving = gameManager != null && gameManager.IsWorldAnimating;
         foreach (var emitter in dirtEmitters)
         {
             if (emitter == null) continue;
@@ -165,6 +178,7 @@ public class VehicleSelector : MonoBehaviour
             if (vehicleVisuals[i] != null)
                 vehicleVisuals[i].SetActive(i == index);
 
+        CacheWheels();
         FitColliderToVisual();
         ApplyVehicleStats();
         UpdateVehicleNameLabel();
@@ -510,6 +524,144 @@ public class VehicleSelector : MonoBehaviour
             dirtEmitters[i].transform.localRotation = side < 0f
                 ? baseRotation * Quaternion.Euler(180f, 0f, 0f)
                 : baseRotation;
+        }
+    }
+
+    // Finds this visual's roll-able wheel meshes and caches each one's rolling radius and
+    // front/rear classification, so per-frame spin (TickWheelSpin) never has to search the
+    // hierarchy or touch bounds. Wheels are identified by name (contains "wheel") plus having
+    // a MeshRenderer, which naturally excludes grouping-only nodes (e.g. the Humvee's "wheels"
+    // transform) and non-mesh helpers; WheelCollider objects (e.g. the armored truck's unused
+    // physics colliders) are excluded explicitly.
+    void CacheWheels()
+    {
+        wheelTransforms = System.Array.Empty<Transform>();
+        wheelRadii = System.Array.Empty<float>();
+        wheelIsFront = System.Array.Empty<bool>();
+        wheelRollAngles = System.Array.Empty<float>();
+        wheelBaseRotations = System.Array.Empty<Quaternion>();
+        currentSteerAngle = 0f;
+
+        var visual = (vehicleVisuals != null && index >= 0 && index < vehicleVisuals.Length) ? vehicleVisuals[index] : null;
+        if (visual == null)
+            return;
+
+        var renderers = visual.GetComponentsInChildren<MeshRenderer>(false);
+        var wheels = new List<Transform>(4);
+        var radii = new List<float>(4);
+        var zLocal = new List<float>(4);
+        var baseRotations = new List<Quaternion>(4);
+
+        foreach (var mr in renderers)
+        {
+            if (!mr.gameObject.name.ToLowerInvariant().Contains("wheel"))
+                continue;
+            if (mr.GetComponent<WheelCollider>() != null)
+                continue;
+
+            wheels.Add(mr.transform);
+            radii.Add(EstimateWheelRadius(mr.bounds));
+            baseRotations.Add(mr.transform.localRotation);
+            // Some imported models (e.g. FBX packs authored in a Z-up tool) keep every
+            // sub-mesh's Transform at the same local position and bake the real per-part
+            // offset into the mesh's own vertex data instead. Bounds.center reflects the
+            // actual geometric position either way; transform.position would not.
+            zLocal.Add(visual.transform.InverseTransformPoint(mr.bounds.center).z);
+        }
+
+        if (wheels.Count == 0)
+            return;
+
+        float minZ = zLocal[0];
+        float maxZ = zLocal[0];
+        for (int i = 1; i < zLocal.Count; i++)
+        {
+            minZ = Mathf.Min(minZ, zLocal[i]);
+            maxZ = Mathf.Max(maxZ, zLocal[i]);
+        }
+        float frontThreshold = (minZ + maxZ) * 0.5f;
+
+        wheelTransforms = wheels.ToArray();
+        wheelRadii = radii.ToArray();
+        wheelBaseRotations = baseRotations.ToArray();
+        wheelIsFront = new bool[wheels.Count];
+        wheelRollAngles = new float[wheels.Count];
+        for (int i = 0; i < wheels.Count; i++)
+            wheelIsFront[i] = zLocal[i] > frontThreshold;
+    }
+
+    // Wheels stand vertically regardless of which way a given car model happens to face, so a
+    // wheel mesh's world-space vertical extent is an orientation-agnostic stand-in for its
+    // rolling diameter.
+    static float EstimateWheelRadius(Bounds worldBounds)
+    {
+        float diameter = worldBounds.size.y;
+        return diameter > 0.001f ? diameter * 0.5f : 0.001f;
+    }
+
+    // Pure math: how fast (degrees/sec) a wheel of the given radius must spin to roll along
+    // the ground at worldSpeed without slipping. internal so it's directly unit-testable.
+    internal static float WheelSpinDegreesPerSecond(float worldSpeed, float wheelRadius)
+    {
+        if (wheelRadius <= 0.0001f)
+            return 0f;
+
+        float circumference = 2f * Mathf.PI * wheelRadius;
+        return (worldSpeed / circumference) * 360f;
+    }
+
+    // The world/props scroll toward the vehicle to simulate it driving forward, so the
+    // vehicle's effective travel direction is the *opposite* of WorldMoveDirection. Projecting
+    // that onto the visual root's local Z (the nose/tail axis, perpendicular to the local-X
+    // axle) tells us whether the vehicle is effectively moving nose-first or not, which is what
+    // determines which way the wheels must spin about their local-X axle to roll without
+    // slipping. Deriving this from world scroll direction (instead of hardcoding a sign) keeps
+    // it correct regardless of how any individual imported model is authored/oriented.
+    float ComputeSpinSign(Transform visualRoot)
+    {
+        if (groundScroller == null || visualRoot == null)
+            return 1f;
+
+        float localZ = visualRoot.InverseTransformDirection(groundScroller.WorldMoveDirection).z;
+        return localZ < 0f ? -1f : 1f;
+    }
+
+    // Advances wheel roll by deltaTime and steers the front wheels toward the player's current
+    // input. internal + explicit deltaTime so edit-mode tests can call this directly and
+    // deterministically without waiting on real frames.
+    internal void TickWheelSpin(float deltaTime, bool driving)
+    {
+        if (!driving)
+            return;
+        if (wheelTransforms == null || wheelTransforms.Length == 0)
+            return;
+        if (groundScroller == null)
+            return;
+
+        var visual = (vehicleVisuals != null && index >= 0 && index < vehicleVisuals.Length) ? vehicleVisuals[index] : null;
+        if (visual == null)
+            return;
+
+        float speed = groundScroller.WorldSpeed;
+        float sign = ComputeSpinSign(visual.transform);
+
+        float targetSteer = playerController != null
+            ? Mathf.Clamp(playerController.SteerInput, -1f, 1f) * maxSteerAngleDegrees
+            : 0f;
+        currentSteerAngle = Mathf.MoveTowards(currentSteerAngle, targetSteer, steerResponseDegPerSec * deltaTime);
+
+        for (int i = 0; i < wheelTransforms.Length; i++)
+        {
+            var wheel = wheelTransforms[i];
+            if (wheel == null)
+                continue;
+
+            float degrees = WheelSpinDegreesPerSecond(speed, wheelRadii[i]) * sign * deltaTime;
+            wheelRollAngles[i] = Mathf.Repeat(wheelRollAngles[i] + degrees, 360f);
+
+            wheel.localRotation = wheelIsFront[i]
+                ? Quaternion.AngleAxis(currentSteerAngle, Vector3.up) * Quaternion.AngleAxis(wheelRollAngles[i], Vector3.right)
+                : Quaternion.AngleAxis(wheelRollAngles[i], Vector3.right);
         }
     }
 
