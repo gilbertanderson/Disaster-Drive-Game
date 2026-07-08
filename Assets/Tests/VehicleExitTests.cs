@@ -23,6 +23,11 @@ public class VehicleExitTests
     [Test]
     public void ActiveRockCount_ResetsOnSubsystemRegistration()
     {
+        // ActiveRockCount is a static counter shared by every test in the run; reset it
+        // first so this test's expected increments don't depend on execution order.
+        typeof(MoveDown).GetMethod("ResetActiveRockCount", BindingFlags.Static | BindingFlags.NonPublic)
+            .Invoke(null, null);
+
         var rock = new GameObject("Rock");
         rock.AddComponent<Rigidbody>().useGravity = false;
         rock.AddComponent<MoveDown>();
@@ -232,6 +237,72 @@ public class VehicleExitTests
         Vector3 exitDirection = (Vector3)GetPrivateField(controller, "exitDirection");
         Assert.That(exitDirection, Is.EqualTo(Vector3.right).Using(Vector3EqualityComparer.Instance));
         Assert.That(Vector3.Dot(exitDirection, Vector3.left), Is.LessThan(0f));
+
+        Object.DestroyImmediate(cameraObject);
+        Object.DestroyImmediate(playerObject);
+    }
+
+    [Test]
+    public void BeginExitDrive_ViaBottom_OpposesUpScreenDirection()
+    {
+        var playerObject = new GameObject("Player");
+        var rb = playerObject.AddComponent<Rigidbody>();
+        var collider = playerObject.AddComponent<BoxCollider>();
+        var controller = playerObject.AddComponent<PlayerController>();
+
+        var cameraObject = new GameObject("GameCamera");
+        var camera = cameraObject.AddComponent<Camera>();
+        camera.transform.position = new Vector3(0f, 16f, 2.5f);
+        camera.transform.rotation = Quaternion.Euler(90f, 0f, -90f);
+
+        SetPrivateField(controller, "playerRb", rb);
+        SetPrivateField(controller, "playerCollider", collider);
+        controller.gameCamera = camera;
+
+        controller.BeginExitDrive(true);
+
+        Assert.IsTrue((bool)GetPrivateField(controller, "isExiting"));
+        Vector3 exitDirection = (Vector3)GetPrivateField(controller, "exitDirection");
+        Assert.That(exitDirection, Is.EqualTo(Vector3.left).Using(Vector3EqualityComparer.Instance),
+            "A bottom exit should head the opposite way from the default top exit (Vector3.right in this camera rig).");
+
+        Object.DestroyImmediate(cameraObject);
+        Object.DestroyImmediate(playerObject);
+    }
+
+    [Test]
+    public void ExitDriveTick_ViaBottom_CompletesAgainstBottomThresholdNotTop()
+    {
+        var playerObject = new GameObject("Player");
+        var rb = playerObject.AddComponent<Rigidbody>();
+        var collider = playerObject.AddComponent<BoxCollider>();
+        collider.size = new Vector3(2f, 2f, 4f);
+        var controller = playerObject.AddComponent<PlayerController>();
+
+        var cameraObject = new GameObject("GameCamera");
+        var camera = cameraObject.AddComponent<Camera>();
+        camera.transform.position = new Vector3(0f, 16f, 2.5f);
+        camera.transform.rotation = Quaternion.Euler(90f, 0f, -90f);
+
+        SetPrivateField(controller, "playerRb", rb);
+        SetPrivateField(controller, "playerCollider", collider);
+        SetPrivateField(controller, "gameManager", gameManager);
+        controller.gameCamera = camera;
+        controller.speed = 10f;
+        // Bottom exit heads toward Vector3.left in this rig; place the vehicle well past that edge.
+        rb.position = new Vector3(-50f, 0.45f, 2.4f);
+
+        SetPrivateProperty(gameManager, "IsGameActive", false);
+        SetPrivateProperty(gameManager, "IsVehicleExiting", true);
+        SetPrivateProperty(gameManager, "IsPaused", false);
+
+        controller.BeginExitDrive(true);
+        SetPrivateField(controller, "exitStartTime", Time.time - 1000f);
+        InvokeFixedUpdate(controller);
+
+        Assert.IsFalse((bool)GetPrivateField(controller, "isExiting"),
+            "Once past the bottom edge, a bottom exit should complete just like a top exit does at the top edge.");
+        Assert.IsFalse(playerObject.activeSelf);
 
         Object.DestroyImmediate(cameraObject);
         Object.DestroyImmediate(playerObject);

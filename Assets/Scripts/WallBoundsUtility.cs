@@ -24,6 +24,9 @@ public static class WallBoundsUtility
 
         foreach (Transform wall in wallsParent.transform)
         {
+            if (wall.GetComponent<BoxCollider>() == null)
+                continue;
+
             float halfDepth = wall.localScale.z * 0.5f;
             if (wall.position.z < referencePosition.z)
                 result.LowZ = Mathf.Max(result.LowZ, wall.position.z + halfDepth);

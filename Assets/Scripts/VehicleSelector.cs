@@ -10,21 +10,42 @@ public class VehicleSelector : MonoBehaviour
 {
     private const string VehicleIndexKey = "VehicleIndex";
 
+    [SerializeField] private int playerIndex;                  // 0 = Player 1 (legacy prefs key), 1 = Player 2
+    [SerializeField] private VehicleSelector otherSelector;    // The other player's selector; the two may never match
     [SerializeField] private GameObject[] vehicleVisuals;
     [SerializeField] private string[] vehicleNames;           // Optional display names; falls back to visual object names
     [SerializeField] private TMP_Text vehicleNameText;        // Shown on the start screen while cycling vehicles
     [SerializeField] private ParticleSystem[] dirtEmitters;   // Rear-tire dirt spray; repositioned to fit each vehicle
     [SerializeField] private bool showEmitterOrientationGizmos = true;
     [SerializeField] private float targetFootprint;  // 0 = auto median horizontal extent across all visuals
+    [SerializeField] private float[] speedMultipliers;
+    [SerializeField] private float[] hitboxScaleMultipliers;
+    [SerializeField] private float maxSteerAngleDegrees = 28f;     // Visual front-wheel lock angle
+    [SerializeField] private float steerResponseDegPerSec = 220f;  // How fast the visual steer angle catches up to input
+
 
     private int index;
     private GameManager gameManager;
     private GroundScroller groundScroller;
+    private PlayerController playerController;
+    private Transform[] wheelTransforms = System.Array.Empty<Transform>();
+    private float[] wheelRadii = System.Array.Empty<float>();
+    private bool[] wheelIsFront = System.Array.Empty<bool>();
+    private float[] wheelRollAngles = System.Array.Empty<float>();
+    private Quaternion[] wheelBaseRotations = System.Array.Empty<Quaternion>();
+    private float currentSteerAngle;
+
+    public int CurrentIndex => index;
+
+    // P1 keeps the original key so an existing save still restores its vehicle.
+    string PrefsKey => playerIndex <= 0 ? VehicleIndexKey : VehicleIndexKey + (playerIndex + 1);
 
     void Awake()
     {
         gameManager = FindAnyObjectByType<GameManager>();
-        groundScroller = FindAnyObjectByType<GroundScroller>();
+        if (groundScroller == null)
+            groundScroller = FindAnyObjectByType<GroundScroller>();
+        playerController = GetComponent<PlayerController>();
 
         // Particle velocity must follow emitter rotation, which requires local simulation space.
         if (dirtEmitters != null)
@@ -41,8 +62,9 @@ public class VehicleSelector : MonoBehaviour
             return;
 
         CompactVehicleVisuals();
+        EnsureStatTables();
         NormalizeVisualScales();
-        index = Mathf.Clamp(PlayerPrefs.GetInt(VehicleIndexKey, 0), 0, vehicleVisuals.Length - 1);
+        index = Mathf.Clamp(PlayerPrefs.GetInt(PrefsKey, 0), 0, vehicleVisuals.Length - 1);
         NormalizeVisualPositions();
         Apply();
     }
@@ -51,19 +73,33 @@ public class VehicleSelector : MonoBehaviour
     {
         // On the start screen, A/D and the arrow keys cycle vehicles like the < > buttons.
         // Gated to the start screen so leftover steering presses can't change the vehicle.
+        // In two-player mode the key sets split to mirror the driving controls:
+        // A/D cycles Player 1's vehicle, the arrows cycle Player 2's.
         if (gameManager != null && gameManager.IsOnStartScreen && Keyboard.current != null)
         {
-            if (Keyboard.current.aKey.wasPressedThisFrame || Keyboard.current.leftArrowKey.wasPressedThisFrame)
+            bool twoPlayer = gameManager.IsTwoPlayerMode;
+            bool listenWasd = playerIndex == 0;
+            bool listenArrows = twoPlayer ? playerIndex == 1 : playerIndex == 0;
+
+            bool prevPressed = (listenWasd && Keyboard.current.aKey.wasPressedThisFrame)
+                || (listenArrows && Keyboard.current.leftArrowKey.wasPressedThisFrame);
+            bool nextPressed = (listenWasd && Keyboard.current.dKey.wasPressedThisFrame)
+                || (listenArrows && Keyboard.current.rightArrowKey.wasPressedThisFrame);
+
+            if (prevPressed)
                 PreviousVehicle();
-            else if (Keyboard.current.dKey.wasPressedThisFrame || Keyboard.current.rightArrowKey.wasPressedThisFrame)
+            else if (nextPressed)
                 NextVehicle();
         }
 
-        // The dirt spray only runs while actually "driving" (mid-run, not paused).
+        // Wheel roll/steer and the dirt spray both only run while actually "driving"
+        // (mid-run or the post-game-over exit drive, not paused).
+        bool driving = gameManager != null && gameManager.IsWorldAnimating;
+        TickWheelSpin(Time.deltaTime, driving);
+
         if (dirtEmitters == null)
             return;
 
-        bool driving = gameManager != null && gameManager.IsWorldAnimating;
         foreach (var emitter in dirtEmitters)
         {
             if (emitter == null) continue;
@@ -89,10 +125,51 @@ public class VehicleSelector : MonoBehaviour
         if (vehicleVisuals == null || vehicleVisuals.Length == 0)
             return;
 
-        index = (index + direction + vehicleVisuals.Length) % vehicleVisuals.Length;
-        PlayerPrefs.SetInt(VehicleIndexKey, index);
+        // Step past any index the other player already holds so the two
+        // selectors can never land on the same vehicle.
+        int candidate = index;
+        for (int step = 0; step < vehicleVisuals.Length; step++)
+        {
+            candidate = (candidate + direction + vehicleVisuals.Length) % vehicleVisuals.Length;
+            if (!IsIndexTakenByOther(candidate))
+                break;
+        }
+
+        if (candidate == index || IsIndexTakenByOther(candidate))
+            return;   // Only one legal vehicle left; stay put
+
+        index = candidate;
+        PlayerPrefs.SetInt(PrefsKey, index);
         PlayerPrefs.Save();
         Apply();
+    }
+
+    bool IsIndexTakenByOther(int candidate)
+    {
+        // An inactive other selector means single-player mode (Player 2 is disabled),
+        // so every vehicle is available.
+        if (otherSelector == null || !otherSelector.gameObject.activeInHierarchy)
+            return false;
+
+        return candidate == otherSelector.CurrentIndex;
+    }
+
+    // Called when two-player mode turns on: if this selector loaded the same
+    // vehicle as the other player, advance to the next free one.
+    public void EnsureDistinctFrom(VehicleSelector other)
+    {
+        if (other == null)
+            return;
+
+        otherSelector = other;
+        if (other.otherSelector == null)
+            other.otherSelector = this;
+
+        if (vehicleVisuals == null || vehicleVisuals.Length < 2)
+            return;
+
+        if (index == other.CurrentIndex)
+            Cycle(1);
     }
 
     void Apply()
@@ -101,16 +178,44 @@ public class VehicleSelector : MonoBehaviour
             if (vehicleVisuals[i] != null)
                 vehicleVisuals[i].SetActive(i == index);
 
+        CacheWheels();
         FitColliderToVisual();
+        ApplyVehicleStats();
         UpdateVehicleNameLabel();
     }
+
+    public void ReapplyStats() => Apply();
+
+    void ApplyVehicleStats()
+    {
+        float speedMul = GetStatMultiplier(speedMultipliers, 1f);
+        var controller = GetComponent<PlayerController>();
+        if (controller != null)
+            controller.SetSpeedMultiplier(speedMul);
+    }
+
+    float GetStatMultiplier(float[] table, float fallback)
+    {
+        if (table == null || table.Length == 0)
+            return fallback;
+        int i = Mathf.Clamp(index, 0, table.Length - 1);
+        return table[i] > 0.001f ? table[i] : fallback;
+    }
+
+    public void RefreshLabel() => UpdateVehicleNameLabel();
 
     void UpdateVehicleNameLabel()
     {
         if (vehicleNameText == null || vehicleVisuals == null || vehicleVisuals.Length == 0)
             return;
 
-        vehicleNameText.text = GetVehicleDisplayName(index);
+        bool twoPlayer = gameManager != null && gameManager.IsTwoPlayerMode;
+        string prefix = twoPlayer ? PlayerColors.GetLabel(playerIndex) + ": " : string.Empty;
+        vehicleNameText.text = prefix + GetVehicleDisplayName(index);
+        if (twoPlayer)
+            vehicleNameText.color = PlayerColors.GetColor(playerIndex);
+        else
+            vehicleNameText.color = Color.white;
     }
 
     string GetVehicleDisplayName(int vehicleIndex)
@@ -161,6 +266,9 @@ public class VehicleSelector : MonoBehaviour
         {
             case "Off-road vehicle":
                 displayName = "Humvee";
+                return true;
+            case "SURVIVAL ARMORED TRUCK 1":
+                displayName = "Armored Truck";
                 return true;
             case "Prefab_K-131":
                 displayName = "Jeep";
@@ -226,6 +334,35 @@ public class VehicleSelector : MonoBehaviour
 
         if (compacted.Count != vehicleVisuals.Length)
             vehicleVisuals = compacted.ToArray();
+    }
+
+    void EnsureStatTables()
+    {
+        if (vehicleVisuals == null || vehicleVisuals.Length == 0)
+            return;
+
+        if (speedMultipliers == null || speedMultipliers.Length != vehicleVisuals.Length)
+            speedMultipliers = BuildDefaultSpeedTable(vehicleVisuals.Length);
+        if (hitboxScaleMultipliers == null || hitboxScaleMultipliers.Length != vehicleVisuals.Length)
+            hitboxScaleMultipliers = BuildDefaultHitboxTable(vehicleVisuals.Length);
+    }
+
+    static float[] BuildDefaultSpeedTable(int count)
+    {
+        float[] defaults = { 0.92f, 1f, 1.08f, 0.88f, 1.05f };
+        var table = new float[count];
+        for (int i = 0; i < count; i++)
+            table[i] = i < defaults.Length ? defaults[i] : 1f;
+        return table;
+    }
+
+    static float[] BuildDefaultHitboxTable(int count)
+    {
+        float[] defaults = { 1.08f, 1f, 0.95f, 1.12f, 0.92f };
+        var table = new float[count];
+        for (int i = 0; i < count; i++)
+            table[i] = i < defaults.Length ? defaults[i] : 1f;
+        return table;
     }
 
     // Scale each visual so its top-down footprint matches the fleet median (or targetFootprint).
@@ -357,7 +494,8 @@ public class VehicleSelector : MonoBehaviour
         // World-space bounds -> this object's local space (the vehicle never rotates)
         Vector3 lossy = transform.lossyScale;
         box.center = transform.InverseTransformPoint(b.center);
-        box.size = new Vector3(b.size.x / lossy.x, b.size.y / lossy.y, b.size.z / lossy.z) * 0.95f;
+        float hitboxMul = GetStatMultiplier(hitboxScaleMultipliers, 1f);
+        box.size = new Vector3(b.size.x / lossy.x, b.size.y / lossy.y, b.size.z / lossy.z) * 0.95f * hitboxMul;
 
         PositionDirtEmitters(box);
     }
@@ -386,6 +524,149 @@ public class VehicleSelector : MonoBehaviour
             dirtEmitters[i].transform.localRotation = side < 0f
                 ? baseRotation * Quaternion.Euler(180f, 0f, 0f)
                 : baseRotation;
+        }
+    }
+
+    // Finds this visual's roll-able wheel meshes and caches each one's rolling radius and
+    // front/rear classification, so per-frame spin (TickWheelSpin) never has to search the
+    // hierarchy or touch bounds. Wheels are identified by name (contains "wheel") plus having
+    // a MeshRenderer, which naturally excludes grouping-only nodes (e.g. the Humvee's "wheels"
+    // transform) and non-mesh helpers; WheelCollider objects (e.g. the armored truck's unused
+    // physics colliders) are excluded explicitly.
+    void CacheWheels()
+    {
+        wheelTransforms = System.Array.Empty<Transform>();
+        wheelRadii = System.Array.Empty<float>();
+        wheelIsFront = System.Array.Empty<bool>();
+        wheelRollAngles = System.Array.Empty<float>();
+        wheelBaseRotations = System.Array.Empty<Quaternion>();
+        currentSteerAngle = 0f;
+
+        var visual = (vehicleVisuals != null && index >= 0 && index < vehicleVisuals.Length) ? vehicleVisuals[index] : null;
+        if (visual == null)
+            return;
+
+        var renderers = visual.GetComponentsInChildren<MeshRenderer>(false);
+        var wheels = new List<Transform>(4);
+        var radii = new List<float>(4);
+        var zLocal = new List<float>(4);
+        var baseRotations = new List<Quaternion>(4);
+
+        foreach (var mr in renderers)
+        {
+            if (!mr.gameObject.name.ToLowerInvariant().Contains("wheel"))
+                continue;
+            if (mr.GetComponent<WheelCollider>() != null)
+                continue;
+
+            wheels.Add(mr.transform);
+            radii.Add(EstimateWheelRadius(mr.bounds));
+            baseRotations.Add(mr.transform.localRotation);
+            // Some imported models (e.g. FBX packs authored in a Z-up tool) keep every
+            // sub-mesh's Transform at the same local position and bake the real per-part
+            // offset into the mesh's own vertex data instead. Bounds.center reflects the
+            // actual geometric position either way; transform.position would not.
+            zLocal.Add(visual.transform.InverseTransformPoint(mr.bounds.center).z);
+        }
+
+        if (wheels.Count == 0)
+            return;
+
+        float minZ = zLocal[0];
+        float maxZ = zLocal[0];
+        for (int i = 1; i < zLocal.Count; i++)
+        {
+            minZ = Mathf.Min(minZ, zLocal[i]);
+            maxZ = Mathf.Max(maxZ, zLocal[i]);
+        }
+        float frontThreshold = (minZ + maxZ) * 0.5f;
+
+        wheelTransforms = wheels.ToArray();
+        wheelRadii = radii.ToArray();
+        wheelBaseRotations = baseRotations.ToArray();
+        wheelIsFront = new bool[wheels.Count];
+        wheelRollAngles = new float[wheels.Count];
+        for (int i = 0; i < wheels.Count; i++)
+            wheelIsFront[i] = zLocal[i] > frontThreshold;
+    }
+
+    // Wheels stand vertically regardless of which way a given car model happens to face, so a
+    // wheel mesh's world-space vertical extent is an orientation-agnostic stand-in for its
+    // rolling diameter.
+    static float EstimateWheelRadius(Bounds worldBounds)
+    {
+        float diameter = worldBounds.size.y;
+        return diameter > 0.001f ? diameter * 0.5f : 0.001f;
+    }
+
+    // Pure math: how fast (degrees/sec) a wheel of the given radius must spin to roll along
+    // the ground at worldSpeed without slipping. internal so it's directly unit-testable.
+    internal static float WheelSpinDegreesPerSecond(float worldSpeed, float wheelRadius)
+    {
+        if (wheelRadius <= 0.0001f)
+            return 0f;
+
+        float circumference = 2f * Mathf.PI * wheelRadius;
+        return (worldSpeed / circumference) * 360f;
+    }
+
+    // The world/props scroll toward the vehicle to simulate it driving forward, so the
+    // vehicle's effective travel direction is the *opposite* of WorldMoveDirection. Projecting
+    // that onto the visual root's local Z (the nose/tail axis, perpendicular to the local-X
+    // axle) tells us whether the vehicle is effectively moving nose-first or not, which is what
+    // determines which way the wheels must spin about their local-X axle to roll without
+    // slipping. Deriving this from world scroll direction (instead of hardcoding a sign) keeps
+    // it correct regardless of how any individual imported model is authored/oriented.
+    float ComputeSpinSign(Transform visualRoot)
+    {
+        if (groundScroller == null || visualRoot == null)
+            return 1f;
+
+        float localZ = visualRoot.InverseTransformDirection(groundScroller.WorldMoveDirection).z;
+        return localZ < 0f ? -1f : 1f;
+    }
+
+    // Advances wheel roll by deltaTime and steers the front wheels toward the player's current
+    // input. internal + explicit deltaTime so edit-mode tests can call this directly and
+    // deterministically without waiting on real frames.
+    internal void TickWheelSpin(float deltaTime, bool driving)
+    {
+        if (!driving)
+            return;
+        if (wheelTransforms == null || wheelTransforms.Length == 0)
+            return;
+        if (groundScroller == null)
+            return;
+
+        var visual = (vehicleVisuals != null && index >= 0 && index < vehicleVisuals.Length) ? vehicleVisuals[index] : null;
+        if (visual == null)
+            return;
+
+        float speed = groundScroller.WorldSpeed;
+        float sign = ComputeSpinSign(visual.transform);
+
+        float targetSteer = playerController != null
+            ? Mathf.Clamp(playerController.SteerInput, -1f, 1f) * maxSteerAngleDegrees
+            : 0f;
+        currentSteerAngle = Mathf.MoveTowards(currentSteerAngle, targetSteer, steerResponseDegPerSec * deltaTime);
+
+        for (int i = 0; i < wheelTransforms.Length; i++)
+        {
+            var wheel = wheelTransforms[i];
+            if (wheel == null)
+                continue;
+
+            float degrees = WheelSpinDegreesPerSecond(speed, wheelRadii[i]) * sign * deltaTime;
+            wheelRollAngles[i] = Mathf.Repeat(wheelRollAngles[i] + degrees, 360f);
+
+            // Roll happens in the mesh's own object space (innermost), then the baked
+            // import-correction rotation (e.g. a Z-up->Y-up FBX fixup) re-orients that into
+            // the parent's frame, then steer yaws the already-corrected wheel (outermost).
+            // With an identity base rotation this collapses to the original formula exactly.
+            Quaternion roll = wheelBaseRotations[i] * Quaternion.AngleAxis(wheelRollAngles[i], Vector3.right);
+            wheel.localRotation = wheelIsFront[i]
+                ? Quaternion.AngleAxis(currentSteerAngle, Vector3.up) * roll
+                : roll;
         }
     }
 
