@@ -31,6 +31,7 @@ public class PlayerController : MonoBehaviour
     public float movementDeadzone = 0.25f;    // Ignore tiny input noise for dirt emitter direction
     [SerializeField] private float crashKnockbackSpeed = 5f;    // Shove applied when two vehicles collide
     [SerializeField] private float crashKnockbackDuration = 0.3f;  // Window where physics, not input, drives the vehicle
+    [SerializeField] private float vehicleContactSkin = 0.01f;  // Gap the movement sweep keeps from the other vehicle's surface
 
     private Rigidbody playerRb;               // Cached Rigidbody for physics-based movement
     private Collider playerCollider;          // Cached collider, used to keep the whole body inside the bounds
@@ -126,6 +127,7 @@ public class PlayerController : MonoBehaviour
         Vector3 movementDirection = (screenRight * horizontalInput + screenForward * verticalInput).normalized;
         CurrentMovementDirection = movementDirection.magnitude > movementDeadzone ? movementDirection : Vector3.zero;
         Vector3 movement = movementDirection * speed * Time.fixedDeltaTime;
+        movement = ClampMovementAgainstOtherVehicle(movement);  // Vehicles are solid: never step through the other player
 
         // Apply movement, then clamp the result inside the playable area
         Vector3 targetPosition = playerRb.position + movement;
@@ -199,6 +201,65 @@ public class PlayerController : MonoBehaviour
 
         knockbackUntil = Time.time + crashKnockbackDuration;
         playerRb.linearVelocity = direction.normalized * crashKnockbackSpeed;
+    }
+
+    // MovePosition teleports the body each physics step (with the velocity zeroed
+    // just before it), so the solver alone can't stop two script-driven vehicles
+    // from pushing through each other. Sweep the step ahead of time and stop at
+    // the other vehicle's surface instead. The stop lands within the physics
+    // contact offset, so OnCollisionEnter — and the crash knockback — still fires.
+    Vector3 ClampMovementAgainstOtherVehicle(Vector3 movement)
+    {
+        float distance = movement.magnitude;
+        if (distance < 0.0001f)
+            return movement;
+
+        Vector3 direction = movement / distance;
+        if (!SweepHitsOtherVehicle(direction, distance, out RaycastHit hit))
+            return movement;
+
+        float allowed = Mathf.Max(0f, hit.distance - vehicleContactSkin);
+
+        // Let the blocked remainder slide along the contact surface so a diagonal
+        // push glides past the other vehicle instead of stopping dead.
+        Vector3 slide = Vector3.ProjectOnPlane(direction * (distance - allowed), hit.normal);
+        slide.y = 0f;
+        float slideDistance = slide.magnitude;
+        if (slideDistance < 0.0001f)
+            return direction * allowed;
+
+        Vector3 slideDirection = slide / slideDistance;
+        if (SweepHitsOtherVehicle(slideDirection, slideDistance, out RaycastHit slideHit))
+            slideDistance = Mathf.Max(0f, slideHit.distance - vehicleContactSkin);
+        return direction * allowed + slideDirection * slideDistance;
+    }
+
+    // True if moving `distance` along `direction` would run into the other
+    // player's vehicle; returns the nearest such hit. Rocks and walls are ignored
+    // here (they have their own responses), and hits are skipped when moving
+    // apart so an existing overlap can always be escaped.
+    bool SweepHitsOtherVehicle(Vector3 direction, float distance, out RaycastHit closestHit)
+    {
+        closestHit = default;
+        bool found = false;
+        foreach (RaycastHit hit in playerRb.SweepTestAll(direction, distance, QueryTriggerInteraction.Ignore))
+        {
+            var other = hit.collider.GetComponentInParent<PlayerController>();
+            if (other == null || other == this)
+                continue;
+
+            Vector3 towardOther = other.transform.position - transform.position;
+            towardOther.y = 0f;
+            if (Vector3.Dot(direction, towardOther) <= 0f)
+                continue;
+
+            if (!found || hit.distance < closestHit.distance)
+            {
+                closestHit = hit;
+                found = true;
+            }
+        }
+        return found;
     }
 
     void ResolveGameCamera()
