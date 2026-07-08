@@ -34,6 +34,8 @@ public class MoveDown : MonoBehaviour
     private Transform playerTransform;          // Single-player fallback (also used by tests)
     private PlayerController[] players;         // All vehicles; near-miss goes to whichever is nearest
     private GameManager gameManager;  // Rocks travel while the world is animating (active run or exit drive)
+    private GroundScroller groundScroller;      // Speed source, so rocks stay in lockstep with the ground/trees
+    [SerializeField] private float groundSpeedMultiplier = 2.25f;  // Same multiplier the decorative trees use
     [SerializeField] private float nearMissDistance = 2f;  // Lateral (Z) gap that still counts as a close dodge
 
     public static int ActiveRockCount { get; private set; }
@@ -52,8 +54,15 @@ public class MoveDown : MonoBehaviour
         objectRb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
         // MovePosition steps at the fixed timestep; without interpolation the rock
         // visibly judders against the trees/ground, which scroll every rendered frame.
+        // Interpolation only smooths MovePosition on a KINEMATIC body (on a dynamic one
+        // it teleports), and the rail must be kinematic anyway: rocks sit partially
+        // buried in the ground, so a dynamic body's ground contacts fight the rail.
+        // The body switches to dynamic only when the vehicle knocks it aside.
         objectRb.interpolation = RigidbodyInterpolation.Interpolate;
+        objectRb.isKinematic = true;
         gameManager = FindAnyObjectByType<GameManager>();
+        groundScroller = FindAnyObjectByType<GroundScroller>();
+        RefreshSpeed();
         players = FindObjectsByType<PlayerController>(FindObjectsSortMode.None);
         if (players.Length > 0)
             playerTransform = players[0].transform;
@@ -102,6 +111,11 @@ public class MoveDown : MonoBehaviour
         TryAwardNearMiss();
         TryDetectPlayerOverlap();
 
+        // Re-read the ground scroll speed each tick (like TreeScroller does every frame)
+        // so rocks always travel at the same world speed as the ground plane and trees.
+        if (!isKnockedAside)
+            RefreshSpeed();
+
         // While being knocked aside, let physics carry the rock freely so the vehicle
         // can shove it off to the side instead of it stopping dead on its scripted rail —
         // but still keep it inside the walls, the same lateral boundary the vehicle obeys.
@@ -120,15 +134,11 @@ public class MoveDown : MonoBehaviour
             return;
         }
 
-        // Move at a constant speed down the screen so collisions are respected,
-        // then clamp Z so a sideways hit can't push the rock past the walls.
+        // Move at a constant speed down the screen (kinematic MovePosition, which
+        // interpolation renders smoothly), clamping Z so a sideways hit can't have
+        // pushed the rock past the walls.
         Vector3 targetPosition = objectRb.position + speed * Time.fixedDeltaTime * moveDirection;
         targetPosition.z = Mathf.Clamp(targetPosition.z, minZ, maxZ);
-
-        // Clear residual velocity from rock-on-rock bumps so only the scripted rail
-        // moves the obstacle (same pattern as PlayerController).
-        objectRb.linearVelocity = Vector3.zero;
-        objectRb.angularVelocity = Vector3.zero;
         objectRb.MovePosition(targetPosition);
 
         Vector3 settled = objectRb.position;
@@ -144,6 +154,14 @@ public class MoveDown : MonoBehaviour
                 gameManager.OnRockDodged();
             Destroy(gameObject);
         }
+    }
+
+    // Rocks without a GroundScroller in the scene (tests, minimal setups) keep
+    // whatever speed was assigned manually or by the spawner.
+    void RefreshSpeed()
+    {
+        if (groundScroller != null)
+            speed = Mathf.Max(1.5f, groundScroller.PropScrollSpeed(groundSpeedMultiplier));
     }
 
     void TryAwardNearMiss()
@@ -240,6 +258,7 @@ public class MoveDown : MonoBehaviour
 
         hitPlayer = true;
         isKnockedAside = true;
+        objectRb.isKinematic = false;   // Rail is kinematic; hand the rock to physics for the shove
         objectRb.constraints = RigidbodyConstraints.FreezeRotation
                              | RigidbodyConstraints.FreezePositionY;
 

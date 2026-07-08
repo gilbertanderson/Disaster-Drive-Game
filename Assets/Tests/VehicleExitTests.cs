@@ -413,6 +413,77 @@ public class VehicleExitTests
     }
 
     [Test]
+    public void MoveDown_SyncsSpeedToGroundScrollerLikeTrees()
+    {
+        SetPrivateProperty(gameManager, "IsGameActive", true);
+        SetPrivateProperty(gameManager, "IsPaused", false);
+
+        var groundObject = GameObject.CreatePrimitive(PrimitiveType.Plane);
+        var scroller = groundObject.AddComponent<GroundScroller>();
+
+        var cameraObject = new GameObject("GameCamera");
+        var camera = cameraObject.AddComponent<Camera>();
+
+        var rockObject = new GameObject("Rock");
+        var rb = rockObject.AddComponent<Rigidbody>();
+        rb.useGravity = false;
+        var mover = rockObject.AddComponent<MoveDown>();
+        mover.gameCamera = camera;
+        mover.speed = 999f;  // Stale value; the per-tick refresh must overwrite it.
+
+        SetPrivateField(mover, "gameManager", gameManager);
+        SetPrivateField(mover, "groundScroller", scroller);
+        SetPrivateField(mover, "objectRb", rb);
+        SetPrivateField(mover, "moveDirection", Vector3.right);
+        SetPrivateField(mover, "bottomThreshold", 1000f);
+        SetPrivateField(mover, "minZ", -50f);
+        SetPrivateField(mover, "maxZ", 50f);
+
+        InvokeFixedUpdate(mover);
+
+        // Rocks must travel at the same world speed as the ground plane and the
+        // decorative trees: GroundScroller.PropScrollSpeed with the shared multiplier.
+        float multiplier = (float)GetPrivateField(mover, "groundSpeedMultiplier");
+        Assert.That(mover.speed, Is.EqualTo(scroller.PropScrollSpeed(multiplier)).Within(0.001f));
+
+        Object.DestroyImmediate(cameraObject);
+        Object.DestroyImmediate(rockObject);
+        Object.DestroyImmediate(groundObject);
+    }
+
+    [Test]
+    public void MoveDown_KeepsManualSpeedWithoutGroundScroller()
+    {
+        SetPrivateProperty(gameManager, "IsGameActive", true);
+        SetPrivateProperty(gameManager, "IsPaused", false);
+
+        var cameraObject = new GameObject("GameCamera");
+        var camera = cameraObject.AddComponent<Camera>();
+
+        var rockObject = new GameObject("Rock");
+        var rb = rockObject.AddComponent<Rigidbody>();
+        rb.useGravity = false;
+        var mover = rockObject.AddComponent<MoveDown>();
+        mover.gameCamera = camera;
+        mover.speed = 7.5f;
+
+        SetPrivateField(mover, "gameManager", gameManager);
+        SetPrivateField(mover, "objectRb", rb);
+        SetPrivateField(mover, "moveDirection", Vector3.right);
+        SetPrivateField(mover, "bottomThreshold", 1000f);
+        SetPrivateField(mover, "minZ", -50f);
+        SetPrivateField(mover, "maxZ", 50f);
+
+        InvokeFixedUpdate(mover);
+
+        Assert.That(mover.speed, Is.EqualTo(7.5f).Within(0.001f),
+            "Without a GroundScroller (tests, minimal scenes) the assigned speed must stick.");
+
+        Object.DestroyImmediate(cameraObject);
+        Object.DestroyImmediate(rockObject);
+    }
+
+    [Test]
     public void MoveDown_AwardsNearMissInsideLateralGap()
     {
         var nearMissManagerObject = new GameObject("NearMissGameManager");
