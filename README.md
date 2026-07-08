@@ -36,14 +36,14 @@ The playable scene is already listed in build settings.
 
 No custom pre-build scripts or CI pipeline are configured — builds are produced from the Unity Editor.
 
-## Course Submission (Project 4)
+## Project Submission
 Submit all three items required by the rubric:
 
 1. **Unity package** — Assets → Export Package → include `Assets/`, `ProjectSettings/`, and `Packages/manifest.json` (exclude `Library/`).
 2. **Build folder** — standalone player from **File → Build Profiles**.
-3. **Reflection** — [`PROJECT_4_REFLECTION.md`](PROJECT_4_REFLECTION.md)
+3. **Reflection** — [`PROJECT_REFLECTION.md`](PROJECT_REFLECTION.md)
 
-Optional supporting docs: [`DESIGN_DEVIATIONS.md`](DESIGN_DEVIATIONS.md), [`PROJECT_4_RUBRIC.md`](PROJECT_4_RUBRIC.md).
+Optional supporting docs: [`DESIGN_DEVIATIONS.md`](DESIGN_DEVIATIONS.md), [`PROJECT_RUBRIC.md`](PROJECT_RUBRIC.md).
 
 ## Running Tests
 Edit Mode tests live in `Assets/Tests/` (**25+ tests** across 4 files).
@@ -60,7 +60,7 @@ Tests cover vehicle selection, dirt emitters, game-over exit drive, near-miss sc
 
 ### Rubric E2E (Play Mode + video)
 
-Play Mode tests in `Assets/Tests/PlayMode/RubricE2ETests.cs` map directly to [`PROJECT_4_RUBRIC.md`](PROJECT_4_RUBRIC.md) (gameplay, audio, particles).
+Play Mode tests in `Assets/Tests/PlayMode/RubricE2ETests.cs` map directly to [`PROJECT_RUBRIC.md`](PROJECT_RUBRIC.md) (gameplay, audio, particles).
 
 **Run with video capture (recommended before submit):**
 
@@ -107,7 +107,7 @@ The `VehicleSelector` component:
 - `Assets/Scripts/WallBoundsUtility.cs` — shared side-wall range math
 - `Assets/Tests/` — Edit Mode test suite
 - `Assets/Scenes/My Game.unity` — main playable scene
-- `PROJECT_REFLECTION.md` / `PROJECT_4_REFLECTION.md` — course reflections
+- `PROJECT_REFLECTION.md` / `PROJECT_REFLECTION.md` — course reflections
 - `STORYBOOK.md` — component behavior reference for AI agents
 
 ## Notes for Developers

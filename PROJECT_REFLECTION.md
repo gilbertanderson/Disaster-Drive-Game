@@ -116,7 +116,7 @@ I also had trouble **finding assets in the Unity Asset Store** that were low-pol
 After selecting a vehicle in the UI, the run starts with smaller obstacles
 approaching the player that **scale larger at random**, with difficulty also increasing every 10 seconds. Overall the main lessons were about spacing out obstacle spawns over time, reworking the X/Y/Z axises with gravity since I chose to change the game's plane originally and it would have broken too many things to change it back, syncing spawns with the moving ground plane, picking random obstacles from an array and removing them when they leave the screen, and getting game boundaries to work reliably.
 
-I really enjoyed this project, and I plan to add a good bit of polish.
+The core design-doc promises top-down driving, rock avoidance, timer penalties, difficulty ramp, Disaster title, game over on timeout, impact audio are all met. Deviations expand presentation and replay value while keeping the same skill-based loop. No deviation was made to reduce scope; each addresses play feel, final assets, or Project 4 polish requirements. I really enjoyed this project, and I plan to add a good bit of polish.
 
 ## What is the version number of Unity that you used to create your Project 3?
 
