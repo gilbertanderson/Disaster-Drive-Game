@@ -14,17 +14,21 @@ public class GameManager : MonoBehaviour
     private const int LeaderboardSize = 5;
 
     // P1 vehicle-picker arrows slide left in 2P mode to make room for the P2 picker.
+    // Two-player X's clear Drive's edges (Drive is 300 wide, arrows 76 wide, both
+    // centered on the same row) with a 22px gap so P1's pair reads as fully left of
+    // Drive and P2's pair fully right, instead of the old -170/170 values, which
+    // overlapped Drive's box by 18px on each side.
     private const float PrevVehicleButtonSinglePlayerX = -170f;
     private const float NextVehicleButtonSinglePlayerX = 170f;
-    private const float PrevVehicleButtonTwoPlayerX = -248f;
-    private const float NextVehicleButtonTwoPlayerX = -170f;
+    private const float PrevVehicleButtonTwoPlayerX = -290f;
+    private const float NextVehicleButtonTwoPlayerX = -210f;
 
     // P1's vehicle name sits alone, centered under Drive, in 1P; in 2P it narrows and
     // shifts under P1's own arrow pair so it lines up on one row with P2's name (at the
-    // mirrored +209/300 spot on P2VehicleNameText), the pair reading as centered under Drive.
+    // mirrored +250/300 spot on P2VehicleNameText), the pair reading as centered under Drive.
     private const float VehicleNameTextSinglePlayerX = 0f;
     private const float VehicleNameTextSinglePlayerWidth = 640f;
-    private const float VehicleNameTextTwoPlayerX = -209f;
+    private const float VehicleNameTextTwoPlayerX = -250f;
     private const float VehicleNameTextTwoPlayerWidth = 300f;
 
     [Header("Timer")]
