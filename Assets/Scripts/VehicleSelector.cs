@@ -205,6 +205,8 @@ public class VehicleSelector : MonoBehaviour
 
     public void RefreshLabel() => UpdateVehicleNameLabel();
 
+    public string CurrentVehicleDisplayName => GetVehicleDisplayName(index);
+
     void UpdateVehicleNameLabel()
     {
         if (vehicleNameText == null || vehicleVisuals == null || vehicleVisuals.Length == 0)

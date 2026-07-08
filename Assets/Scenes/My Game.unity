@@ -5834,10 +5834,6 @@ PrefabInstance:
       propertyPath: m_Mass
       value: 10
       objectReference: {fileID: 0}
-    - target: {fileID: 4891688350899337497, guid: 74b3b806b065049d9a83f3243aeadcf3, type: 3}
-      propertyPath: 'm_Materials.Array.data[0]'
-      value: 
-      objectReference: {fileID: 240665796}
     - target: {fileID: 5240694819685952632, guid: 74b3b806b065049d9a83f3243aeadcf3, type: 3}
       propertyPath: playerIndex
       value: 1
@@ -9323,13 +9319,9 @@ PrefabInstance:
       propertyPath: m_Mass
       value: 10
       objectReference: {fileID: 0}
-    - target: {fileID: 4891688350899337497, guid: 74b3b806b065049d9a83f3243aeadcf3, type: 3}
-      propertyPath: 'm_Materials.Array.data[0]'
-      value: 
-      objectReference: {fileID: 240665796}
     - target: {fileID: 5240694819685952632, guid: 74b3b806b065049d9a83f3243aeadcf3, type: 3}
       propertyPath: otherSelector
-      value: 
+      value:
       objectReference: {fileID: 1420139410}
     - target: {fileID: 5240694819685952632, guid: 74b3b806b065049d9a83f3243aeadcf3, type: 3}
       propertyPath: vehicleNameText
