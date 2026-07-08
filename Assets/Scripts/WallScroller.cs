@@ -61,6 +61,18 @@ public class WallScroller : MonoBehaviour
             RefreshMotion();
 
         transform.position += speed * Time.deltaTime * moveDirection;
+    }
+
+    // Recycling must wait until every tile has finished this frame's Update move:
+    // leapfrog placement reads the partner tile's live position, and Update order
+    // between the two tiles in a lane is unspecified. When the exiting tile updated
+    // before its partner, it was placed against the partner's pre-move position and
+    // the partner's still-pending move opened a one-frame-of-travel gap at the seam
+    // (tile seams are authored exactly flush, so any placement error is visible).
+    void LateUpdate()
+    {
+        if (gameManager != null && !gameManager.IsWorldAnimating)
+            return;
 
         if (Vector3.Dot(transform.position, moveDirection) > bottomThreshold)
         {
