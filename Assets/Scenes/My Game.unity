@@ -4755,7 +4755,7 @@ MonoBehaviour:
   grassScroller: {fileID: 0}
   spawnX: 12
   leftLaneZ: 11.5
-  rightLaneZ: -7.9
+  rightLaneZ: -6.7
   segmentY: 0.05
 --- !u!4 &1351161749
 Transform:
