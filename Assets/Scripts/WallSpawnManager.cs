@@ -119,6 +119,10 @@ public class WallSpawnManager : MonoBehaviour
         GameObject probe = Instantiate(fencePrefab, Vector3.down * 1000f, Quaternion.identity);
         probe.transform.localScale = Vector3.one * segmentScale;
 
+        LODGroup lodGroup = probe.GetComponentInChildren<LODGroup>();
+        if (lodGroup != null)
+            lodGroup.ForceLOD(0);
+
         var renderers = probe.GetComponentsInChildren<Renderer>();
         if (renderers.Length > 0)
         {
