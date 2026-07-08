@@ -19,6 +19,14 @@ public class GameManager : MonoBehaviour
     private const float PrevVehicleButtonTwoPlayerX = -248f;
     private const float NextVehicleButtonTwoPlayerX = -170f;
 
+    // P1's vehicle name sits alone, centered under Drive, in 1P; in 2P it narrows and
+    // shifts under P1's own arrow pair so it lines up on one row with P2's name (at the
+    // mirrored +209/300 spot on P2VehicleNameText), the pair reading as centered under Drive.
+    private const float VehicleNameTextSinglePlayerX = 0f;
+    private const float VehicleNameTextSinglePlayerWidth = 640f;
+    private const float VehicleNameTextTwoPlayerX = -209f;
+    private const float VehicleNameTextTwoPlayerWidth = 300f;
+
     [Header("Timer")]
     [SerializeField] private float startTime = 60f;   // Seconds on the clock at the start of a run
     [SerializeField] private float hitPenalty = 5f;   // Seconds removed when the vehicle hits a rock
@@ -31,6 +39,7 @@ public class GameManager : MonoBehaviour
     [SerializeField] private GameObject player2SelectorUI;       // P2 vehicle picker cluster on the start panel
     [SerializeField] private RectTransform prevVehicleButtonRect; // P1 picker left arrow; repositioned per player count
     [SerializeField] private RectTransform nextVehicleButtonRect; // P1 picker right arrow; repositioned per player count
+    [SerializeField] private RectTransform vehicleNameTextRect;   // P1 vehicle name label; repositioned per player count
     [SerializeField] private TMP_Text timer2Text;                // P2 clock in the HUD (2P only)
     [SerializeField] private TMP_Text playerCountButtonLabel;    // "1 Player" / "2 Players" toggle button label
     [SerializeField] private float vehicleCollisionCooldown = 1f; // One penalty per bump, not per contact pair
@@ -565,6 +574,15 @@ public class GameManager : MonoBehaviour
             nextVehicleButtonRect.anchoredPosition = new Vector2(
                 twoPlayer ? NextVehicleButtonTwoPlayerX : NextVehicleButtonSinglePlayerX,
                 nextVehicleButtonRect.anchoredPosition.y);
+        if (vehicleNameTextRect != null)
+        {
+            vehicleNameTextRect.anchoredPosition = new Vector2(
+                twoPlayer ? VehicleNameTextTwoPlayerX : VehicleNameTextSinglePlayerX,
+                vehicleNameTextRect.anchoredPosition.y);
+            vehicleNameTextRect.sizeDelta = new Vector2(
+                twoPlayer ? VehicleNameTextTwoPlayerWidth : VehicleNameTextSinglePlayerWidth,
+                vehicleNameTextRect.sizeDelta.y);
+        }
         if (timer2Text != null)
             timer2Text.gameObject.SetActive(twoPlayer);
         if (playerCountButtonLabel != null)

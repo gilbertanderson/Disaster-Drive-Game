@@ -2575,6 +2575,7 @@ MonoBehaviour:
   player2SelectorUI: {fileID: 2052222749}
   prevVehicleButtonRect: {fileID: 1965538156}
   nextVehicleButtonRect: {fileID: 618872769}
+  vehicleNameTextRect: {fileID: 1900000002}
   timer2Text: {fileID: 509322393}
   playerCountButtonLabel: {fileID: 1516190524}
   vehicleCollisionCooldown: 1
@@ -4924,7 +4925,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 640, y: -170}
+  m_AnchoredPosition: {x: 209, y: -170}
   m_SizeDelta: {x: 300, y: 60}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1175967521
