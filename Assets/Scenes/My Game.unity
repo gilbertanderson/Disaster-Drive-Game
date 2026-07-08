@@ -2753,6 +2753,8 @@ MonoBehaviour:
   - {fileID: 1420139412}
   player2Object: {fileID: 1420139413}
   player2SelectorUI: {fileID: 2052222749}
+  prevVehicleButtonRect: {fileID: 1965538156}
+  nextVehicleButtonRect: {fileID: 618872769}
   timer2Text: {fileID: 509322393}
   playerCountButtonLabel: {fileID: 1516190524}
   vehicleCollisionCooldown: 1
