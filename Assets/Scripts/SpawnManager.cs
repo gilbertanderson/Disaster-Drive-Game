@@ -24,10 +24,11 @@ public class SpawnManager : MonoBehaviour
 
     [Header("Rock Variety")]
     [SerializeField] private GameObject[] rockVisuals;  // Mesh prefabs swapped onto the shell (PolyOne, JC, etc.)
-    [SerializeField] private Vector2 rockScaleRange = new Vector2(0.95f, 1.05f);  // Small per-rock jitter applied on top of the normalized target size
+    [SerializeField] private Vector2 rockScaleRange = new Vector2(1.3f, 1.4f);  // Random size multiplier per rock
+    [SerializeField] private float maxRockScaleMultiplier = 1.7f;             // Ceiling on total scale relative to the authored rock-visual prefab
     [SerializeField] private float rockSpeedMultiplier = 2.25f;                  // Match decorative trees so rocks travel at the same world speed
     [SerializeField] private float minRockVisualFootprint = 1.2f;                // Drop prefab variants smaller than this at authored scale
-    [SerializeField] private float minRockFootprint;  // 0 = auto-detect from convertible at runtime; also used as the normalized target footprint all rocks scale to
+    [SerializeField] private float minRockFootprint;  // 0 = auto-detect from convertible at runtime
     [SerializeField] private float minRockHeight = 1.8f;                         // Minimum world-space visual height after scaling
     [SerializeField] private float rockGroundBurialFraction = 0.2f;              // Fraction of rock height below the road surface
     [SerializeField] private float groundLevelY;                                 // 0 = auto-detect from Ground / GroundScroller at runtime
@@ -202,6 +203,7 @@ public class SpawnManager : MonoBehaviour
 
     void SpawnObstacleInternal()
     {
+        float sizeMultiplier = Random.Range(rockScaleRange.x, rockScaleRange.y);
         float randomZ = PickSpawnZ();
         CacheSpawnX();  // Recompute fresh every spawn so a stale camera/aspect snapshot can never place a rock on-screen.
         Vector3 spawnPos = new Vector3(spawnX, cachedGroundLevelY, randomZ);
@@ -224,8 +226,11 @@ public class SpawnManager : MonoBehaviour
             visual = GetRockVisual(rock);
         }
 
-        NormalizeRockSize(rock);
+        Vector3 baseScale = rock.transform.localScale;
+        rock.transform.localScale *= sizeMultiplier;
+        EnforceMinimumRockFootprint(rock);
         EnforceMinimumRockHeight(rock);
+        ClampMaximumRockScale(rock, baseScale);
 
         if (visual != null)
         {
@@ -243,22 +248,6 @@ public class SpawnManager : MonoBehaviour
                 : mover.speed;
             mover.speed = Mathf.Max(1.5f, scrollSpeed);
         }
-    }
-
-    // Scales the rock so its footprint matches a single common target instead of
-    // drifting with whatever native scale the source visual prefab happened to ship
-    // at — this is what keeps every rock roughly the same size (large variance was
-    // the main reason the box/sphere collider fit looked wrong on bigger rocks).
-    void NormalizeRockSize(GameObject rock)
-    {
-        float footprint = MeasureRockFootprint(rock);
-        float targetFootprint = minRockFootprint > 0.001f ? minRockFootprint : minRockVisualFootprint;
-        if (footprint <= 0.001f || targetFootprint <= 0.001f)
-            return;
-
-        float normalizeFactor = Mathf.Clamp(targetFootprint / footprint, 0.3f, 3f);
-        float jitter = Random.Range(rockScaleRange.x, rockScaleRange.y);
-        rock.transform.localScale *= normalizeFactor * jitter;
     }
 
     GameObject ApplyRandomVisual(GameObject rock)
@@ -321,6 +310,16 @@ public class SpawnManager : MonoBehaviour
         return Mathf.Max(bounds.size.x, bounds.size.z);
     }
 
+    void EnforceMinimumRockFootprint(GameObject rock)
+    {
+        if (minRockFootprint <= 0.001f)
+            return;
+
+        float footprint = MeasureRockFootprint(rock);
+        if (footprint > 0.001f && footprint < minRockFootprint)
+            rock.transform.localScale *= minRockFootprint / footprint;
+    }
+
     static float MeasureRockHeight(GameObject rock)
     {
         var renderers = rock.GetComponentsInChildren<Renderer>();
@@ -342,6 +341,19 @@ public class SpawnManager : MonoBehaviour
         float height = MeasureRockHeight(rock);
         if (height > 0.001f && height < minRockHeight)
             rock.transform.localScale *= minRockHeight / height;
+    }
+
+    // Pulls the scale back down if the base multiplier plus the min-footprint/
+    // min-height floors above compounded into an oversized rock.
+    void ClampMaximumRockScale(GameObject rock, Vector3 baseScale)
+    {
+        if (maxRockScaleMultiplier <= 0.001f)
+            return;
+
+        float baseX = Mathf.Max(baseScale.x, 0.0001f);
+        float ratio = rock.transform.localScale.x / baseX;
+        if (ratio > maxRockScaleMultiplier)
+            rock.transform.localScale *= maxRockScaleMultiplier / ratio;
     }
 
     bool HasUsableRockVisuals()
