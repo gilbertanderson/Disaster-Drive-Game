@@ -13,6 +13,12 @@ public class GameManager : MonoBehaviour
     private const string PlayerCountKey = "PlayerCount"; // PlayerPrefs key for the 1P/2P mode toggle
     private const int LeaderboardSize = 5;
 
+    // P1 vehicle-picker arrows slide left in 2P mode to make room for the P2 picker.
+    private const float PrevVehicleButtonSinglePlayerX = -170f;
+    private const float NextVehicleButtonSinglePlayerX = 170f;
+    private const float PrevVehicleButtonTwoPlayerX = -248f;
+    private const float NextVehicleButtonTwoPlayerX = -170f;
+
     [Header("Timer")]
     [SerializeField] private float startTime = 60f;   // Seconds on the clock at the start of a run
     [SerializeField] private float hitPenalty = 5f;   // Seconds removed when the vehicle hits a rock
@@ -23,6 +29,8 @@ public class GameManager : MonoBehaviour
     [SerializeField] private PlayerController[] players;         // P1 (and P2) controllers; found by playerIndex if unassigned
     [SerializeField] private GameObject player2Object;           // Player 2 vehicle hierarchy; active only in 2P mode
     [SerializeField] private GameObject player2SelectorUI;       // P2 vehicle picker cluster on the start panel
+    [SerializeField] private RectTransform prevVehicleButtonRect; // P1 picker left arrow; repositioned per player count
+    [SerializeField] private RectTransform nextVehicleButtonRect; // P1 picker right arrow; repositioned per player count
     [SerializeField] private TMP_Text timer2Text;                // P2 clock in the HUD (2P only)
     [SerializeField] private TMP_Text playerCountButtonLabel;    // "1 Player" / "2 Players" toggle button label
     [SerializeField] private float vehicleCollisionCooldown = 1f; // One penalty per bump, not per contact pair
@@ -549,6 +557,14 @@ public class GameManager : MonoBehaviour
             player2Object.SetActive(twoPlayer);
         if (player2SelectorUI != null)
             player2SelectorUI.SetActive(twoPlayer);
+        if (prevVehicleButtonRect != null)
+            prevVehicleButtonRect.anchoredPosition = new Vector2(
+                twoPlayer ? PrevVehicleButtonTwoPlayerX : PrevVehicleButtonSinglePlayerX,
+                prevVehicleButtonRect.anchoredPosition.y);
+        if (nextVehicleButtonRect != null)
+            nextVehicleButtonRect.anchoredPosition = new Vector2(
+                twoPlayer ? NextVehicleButtonTwoPlayerX : NextVehicleButtonSinglePlayerX,
+                nextVehicleButtonRect.anchoredPosition.y);
         if (timer2Text != null)
             timer2Text.gameObject.SetActive(twoPlayer);
         if (playerCountButtonLabel != null)
