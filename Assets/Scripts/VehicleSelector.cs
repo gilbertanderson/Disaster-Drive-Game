@@ -62,6 +62,7 @@ public class VehicleSelector : MonoBehaviour
             return;
 
         CompactVehicleVisuals();
+        DisableEmbeddedCameraRigs();
         EnsureStatTables();
         NormalizeVisualScales();
         index = Mathf.Clamp(PlayerPrefs.GetInt(PrefsKey, 0), 0, vehicleVisuals.Length - 1);
@@ -268,7 +269,7 @@ public class VehicleSelector : MonoBehaviour
                 displayName = "Humvee";
                 return true;
             case "SURVIVAL ARMORED TRUCK 1":
-                displayName = "Armored Truck";
+                displayName = "Armored Car";
                 return true;
             case "Prefab_K-131":
                 displayName = "Jeep";
@@ -334,6 +335,24 @@ public class VehicleSelector : MonoBehaviour
 
         if (compacted.Count != vehicleVisuals.Length)
             vehicleVisuals = compacted.ToArray();
+    }
+
+    // Some imported vehicle prefabs ship with their own camera rig (e.g. the armored
+    // truck's "Main Camera" child with a Camera and AudioListener). Left enabled, that
+    // camera takes over rendering the moment its vehicle is activated, replacing the
+    // game's top-down view with a behind-the-vehicle one.
+    void DisableEmbeddedCameraRigs()
+    {
+        foreach (var visual in vehicleVisuals)
+        {
+            if (visual == null)
+                continue;
+
+            foreach (var camera in visual.GetComponentsInChildren<Camera>(true))
+                camera.enabled = false;
+            foreach (var listener in visual.GetComponentsInChildren<AudioListener>(true))
+                listener.enabled = false;
+        }
     }
 
     void EnsureStatTables()

@@ -28,11 +28,17 @@ public class GameManager : MonoBehaviour
 
     // P1's vehicle name sits alone, centered under Drive, in 1P; in 2P it narrows and
     // shifts under P1's own arrow pair so it lines up on one row with P2's name (at the
-    // mirrored +250/300 spot on P2VehicleNameText), the pair reading as centered under Drive.
+    // mirrored +250/500 spot on P2VehicleNameText), the pair reading as centered under Drive.
     private const float VehicleNameTextSinglePlayerX = 0f;
     private const float VehicleNameTextSinglePlayerWidth = 640f;
     private const float VehicleNameTextTwoPlayerX = -250f;
-    private const float VehicleNameTextTwoPlayerWidth = 300f;
+    private const float VehicleNameTextTwoPlayerWidth = 500f;
+
+    // P1's vehicle slides outward in 2P so the pair frames the start-screen shot;
+    // P2's spot is scene-authored (z -3.5) since it only exists in 2P. In 1P, P1
+    // returns to its scene-authored preview position.
+    private const float Player1VehicleSinglePlayerZ = 2.25f;
+    private const float Player1VehicleTwoPlayerZ = 8f;
 
     [Header("Timer")]
     [SerializeField] private float startTime = 60f;   // Seconds on the clock at the start of a run
@@ -600,6 +606,12 @@ public class GameManager : MonoBehaviour
         var p1 = GetPlayer(0);
         var p2 = GetPlayer(1);
         if (p1 != null)
+        {
+            Vector3 vehiclePos = p1.transform.position;
+            vehiclePos.z = twoPlayer ? Player1VehicleTwoPlayerZ : Player1VehicleSinglePlayerZ;
+            p1.transform.position = vehiclePos;
+        }
+        if (p1 != null)
             p1.ApplyControlScheme(twoPlayer
                 ? PlayerController.ControlScheme.WasdOnly
                 : PlayerController.ControlScheme.WasdAndArrows);
@@ -1048,7 +1060,7 @@ public class GameManager : MonoBehaviour
     {
         if (controlsHintText != null)
             controlsHintText.text = IsTwoPlayerMode
-                ? "Dodge Obstacles\nP1 WASD, P2 Arrows or Gamepad\nEsc pause"
+                ? "Dodge Obstacles\nP1 WASD, P2 Arrows\nEsc pause"
                 : "Dodge Obstacles\nWASD steer\nEsc pause";
     }
 

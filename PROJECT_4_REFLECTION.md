@@ -65,11 +65,35 @@ selection and the exit-drive behavior would not break again when I changed
 things. A small Inspector typo in an older variable name is still there because
 renaming it would have broken serialized references.
 
+The schedule itself turned into a challenge near the end. Features I added
+that were **outside my original scope** — two-player mode, the camera director,
+beat-synced countdown transitions — were the parts I was proudest of, but every
+one of them pushed the finish line back, and the last stretch before submission
+became real **crunch time**. Extra features are fun to build, but they hinder
+delivering the project on time, and I felt that trade-off directly.
+
+I also paid interest on **questionable choices I made early in development
+without thinking about how they would affect future updates**. Changing the
+**world view** early on swapped what the X/Y/Z axes meant, which changed how
+gravity and movement direction worked for everything built afterward — and by
+the time I felt the pain, reverting would have broken too much to be worth it.
+The misspelled Inspector variable I kept is the same pattern in miniature — a
+quick patch instead of a proper fix. Every time I
+reached for a **hotfix** instead of **refactoring early**, the cost came back
+bigger later: extending the game to two players would have been far easier if
+`GameManager` had not assumed a single global game-over state from the start.
+Hotfixes have their place, but cleaning up a system while it is still small is
+almost always cheaper than patching around it once everything depends on it.
+
 Overall the main lessons for Project 4 were about finishing a game, not just
 getting one working: normalizing content that was never designed together,
 keeping particle and scroll motion believable, extending single-player systems
 to support two players without a rewrite, testing the tricky parts, and
-managing project size so I could actually ship a clean export.
+managing project size so I could actually ship a clean export. Just as
+important were the process lessons: scope features honestly so deadlines do
+not turn into crunch, think about how early decisions will affect updates down
+the road, and refactor early instead of stacking hotfixes on a shaky
+foundation.
 
 I really enjoyed pushing the project further, and I still plan to add more
 polish after submission.
