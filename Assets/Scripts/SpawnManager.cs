@@ -10,10 +10,11 @@ public class SpawnManager : MonoBehaviour
 {
     public GameObject[] obstacles;                // Gameplay shell prefab(s); rockVisuals swaps the mesh at spawn
 
-    public float spawnX = 7.0f;                   // Travel-axis spawn line near the top of the field
+    public float spawnX = 7.0f;                   // Fallback travel-axis spawn line, used only if no camera is found
     public string wallsParentName = "Walls";      // Parent whose children mark the lateral (Z) bounds
     public float lateralPadding = 0.5f;           // Keep spawns a little inside the walls so rocks don't clip them
     public int maxObstacles = 5;                  // Cap on how many rocks may exist at once
+    [SerializeField] private float spawnMargin = 2.0f;  // Extra distance past the camera's top edge so rocks spawn fully off-screen
 
     [SerializeField] private float obstacleSpawnInterval = 2.2f;  // Seconds between spawns at the start
     [SerializeField] private float startDelay = 2.0f;             // Delay before the first spawn
@@ -24,6 +25,7 @@ public class SpawnManager : MonoBehaviour
     [Header("Rock Variety")]
     [SerializeField] private GameObject[] rockVisuals;  // Mesh prefabs swapped onto the shell (PolyOne, JC, etc.)
     [SerializeField] private Vector2 rockScaleRange = new Vector2(1.3f, 1.4f);  // Random size multiplier per rock
+    [SerializeField] private float maxRockScaleMultiplier = 1.7f;             // Ceiling on total scale relative to the authored rock-visual prefab
     [SerializeField] private float rockSpeedMultiplier = 2.25f;                  // Match decorative trees so rocks travel at the same world speed
     [SerializeField] private float minRockVisualFootprint = 1.2f;                // Drop prefab variants smaller than this at authored scale
     [SerializeField] private float minRockFootprint;  // 0 = auto-detect from convertible at runtime
@@ -50,6 +52,7 @@ public class SpawnManager : MonoBehaviour
     private GameObject[] validRockVisuals;        // Cached, spawn-safe prefab list
     private float cachedGroundLevelY;             // Road surface Y used for burial alignment
     private bool spawnOnHighSide;
+    private Camera gameCamera;                    // Used to place spawnX just past the camera's real top edge
 
     void OnValidate()
     {
@@ -72,7 +75,23 @@ public class SpawnManager : MonoBehaviour
         CacheGroundLevelY();
         FindWallRange();
         CacheMinRockFootprint();
+        CacheSpawnX();
         StartCoroutine(SpawnLoop());
+    }
+
+    // Places spawnX just past the camera's real top edge so rocks always spawn
+    // fully off-screen, instead of relying on a hand-tuned constant that can
+    // fall short on a different camera setup or aspect ratio.
+    void CacheSpawnX()
+    {
+        gameCamera = Camera.main;
+        if (gameCamera == null)
+            return;
+
+        Vector3 moveDirection = ScreenEdgeUtility.ComputeTravelDirection(gameCamera);
+        Vector3 topWorld = ScreenEdgeUtility.TopWorldPoint(gameCamera, cachedGroundLevelY);
+        Vector3 entryPoint = topWorld - moveDirection.normalized * spawnMargin;
+        spawnX = entryPoint.x;
     }
 
     void CacheGroundLevelY()
@@ -192,9 +211,11 @@ public class SpawnManager : MonoBehaviour
             visual = GetRockVisual(rock);
         }
 
+        Vector3 baseScale = rock.transform.localScale;
         rock.transform.localScale *= sizeMultiplier;
         EnforceMinimumRockFootprint(rock);
         EnforceMinimumRockHeight(rock);
+        ClampMaximumRockScale(rock, baseScale);
 
         if (visual != null)
         {
@@ -305,6 +326,19 @@ public class SpawnManager : MonoBehaviour
         float height = MeasureRockHeight(rock);
         if (height > 0.001f && height < minRockHeight)
             rock.transform.localScale *= minRockHeight / height;
+    }
+
+    // Pulls the scale back down if the base multiplier plus the min-footprint/
+    // min-height floors above compounded into an oversized rock.
+    void ClampMaximumRockScale(GameObject rock, Vector3 baseScale)
+    {
+        if (maxRockScaleMultiplier <= 0.001f)
+            return;
+
+        float baseX = Mathf.Max(baseScale.x, 0.0001f);
+        float ratio = rock.transform.localScale.x / baseX;
+        if (ratio > maxRockScaleMultiplier)
+            rock.transform.localScale *= maxRockScaleMultiplier / ratio;
     }
 
     bool HasUsableRockVisuals()

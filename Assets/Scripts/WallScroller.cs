@@ -1,12 +1,23 @@
 using UnityEngine;
 
-// Moves a fence segment down-screen at the same world speed as the grass scroll.
+// Moves one long stone-wall tile down-screen at the same world speed as the grass
+// scroll. The tile's own length along the travel axis is authored once (baked into
+// the prefab as `tileLength`) rather than measured at runtime, so the two-tile
+// leapfrog recycling math in WallSpawnManager is exact and seam-free.
+//
+// Pivot convention: transform.position is the tile's LEADING edge (the edge nearest
+// the spawn/top side of the screen). The tile's geometry extends backward from there
+// (in the +moveDirection sense) by `tileLength` to reach its trailing edge. Because the
+// leading edge is also the last part of the tile to clear the bottom of the screen, the
+// existing bottom-threshold check (based on the pivot alone) is already correct for a
+// tile of any length -- no per-frame bounds measurement needed.
 public class WallScroller : MonoBehaviour
 {
     public Camera gameCamera;
     public float wrapMargin = 2f;
 
     [SerializeField] private float wallSpeedMultiplier = 2.25f;
+    [SerializeField] private float tileLength = 30f; // authored: total span of this tile along the travel axis
     [SerializeField] private float recycleSpawnX = 12f;
     [SerializeField] private float recycleSpawnMargin = 1f;
 
@@ -18,6 +29,7 @@ public class WallScroller : MonoBehaviour
     private float speed = 2.5f;
 
     public float LaneZ { get; set; }
+    public float TileLength => tileLength;
 
     public void Configure(GroundScroller scroller)
     {

@@ -12,6 +12,9 @@ public class GameManager : MonoBehaviour
     private const string MusicMutedKey = "MusicMuted"; // PlayerPrefs key for the music toggle
     private const string PlayerCountKey = "PlayerCount"; // PlayerPrefs key for the 1P/2P mode toggle
     private const int LeaderboardSize = 5;
+    private const float TwoPlayerTimerOffsetX = 260f; // Horizontal split between P1/P2 timers in 2P mode
+    private const float PenaltyPopupOffsetX = 230f;   // Popup offset outward from its own timer (matches original scene-authored spacing)
+    private const float PenaltyPopupOffsetY = -5f;    // Popup sits just below its timer's own baseline
 
     // P1 vehicle-picker arrows slide left in 2P mode to make room for the P2 picker.
     // Two-player X's clear Drive's edges (Drive is 300 wide, arrows 76 wide, both
@@ -156,6 +159,7 @@ public class GameManager : MonoBehaviour
     private Coroutine startPanelHideRoutine;
     private Coroutine gameOverShowRoutine;
     private Coroutine pausePanelRoutine;
+    private TwoPlayerUIStyler uiStyler;
 
     void Start()
     {
@@ -562,6 +566,7 @@ public class GameManager : MonoBehaviour
     void SetTwoPlayerMode(bool twoPlayer)
     {
         IsTwoPlayerMode = twoPlayer;
+        PositionTimerHud(twoPlayer);
 
         // Player 2's vehicle stands next to Player 1 on the start screen so the
         // second picker has something to preview. SetActive runs its Awake the
@@ -615,6 +620,29 @@ public class GameManager : MonoBehaviour
         UpdateControlsHint();
         RefreshVehiclePickerLabels();
         EnsureIdentityMarkers();
+        uiStyler?.Refresh();
+    }
+
+    // Splits the P1/P2 timers apart (and moves their penalty popups with them) so they never
+    // overlap in 2P mode, and recenters everything when back to 1P.
+    void PositionTimerHud(bool twoPlayer)
+    {
+        float baseY = timerText != null ? timerText.rectTransform.anchoredPosition.y : -20f;
+        float p1X = twoPlayer ? -TwoPlayerTimerOffsetX : 0f;
+        float p2X = TwoPlayerTimerOffsetX;
+
+        if (timerText != null)
+            timerText.rectTransform.anchoredPosition = new Vector2(p1X, baseY);
+        if (timer2Text != null)
+            timer2Text.rectTransform.anchoredPosition = new Vector2(p2X, baseY);
+
+        float popupY = baseY + PenaltyPopupOffsetY;
+        float p1PopupX = twoPlayer ? p1X - PenaltyPopupOffsetX : p1X + PenaltyPopupOffsetX;
+        float p2PopupX = p2X + PenaltyPopupOffsetX;
+        if (penaltyPopupP1 != null)
+            penaltyPopupP1.rectTransform.anchoredPosition = new Vector2(p1PopupX, popupY);
+        if (penaltyPopupP2 != null)
+            penaltyPopupP2.rectTransform.anchoredPosition = new Vector2(p2PopupX, popupY);
     }
 
     void EnsureRuntimeUiRefs()
@@ -622,20 +650,12 @@ public class GameManager : MonoBehaviour
         // Backward-compatible migration: if scene still has only one popup, repurpose it for P1 and clone P2.
         if (penaltyPopupP1 == null)
             penaltyPopupP1 = penaltyPopupText;
-        if (penaltyPopupP1 != null && timerText != null)
-        {
-            var p1Rt = penaltyPopupP1.rectTransform;
-            p1Rt.anchoredPosition = timerText.rectTransform.anchoredPosition + new Vector2(0f, -70f);
-        }
 
         if (penaltyPopupP1 != null && penaltyPopupP2 == null)
         {
             GameObject p2Popup = Instantiate(penaltyPopupP1.gameObject, penaltyPopupP1.transform.parent);
             p2Popup.name = "PenaltyPopupP2Runtime";
             penaltyPopupP2 = p2Popup.GetComponent<TMP_Text>();
-            var rt = p2Popup.GetComponent<RectTransform>();
-            if (rt != null && timer2Text != null)
-                rt.anchoredPosition = timer2Text.rectTransform.anchoredPosition + new Vector2(0f, -70f);
         }
 
         if (countdownText == null && timerText != null)
@@ -683,10 +703,10 @@ public class GameManager : MonoBehaviour
 
     void EnsureUiStyler()
     {
-        if (GetComponent<TwoPlayerUIStyler>() != null)
-            return;
-
-        gameObject.AddComponent<TwoPlayerUIStyler>();
+        uiStyler = GetComponent<TwoPlayerUIStyler>();
+        if (uiStyler == null)
+            uiStyler = gameObject.AddComponent<TwoPlayerUIStyler>();
+        uiStyler.Init(this, timerText, timer2Text, penaltyPopupP1, penaltyPopupP2, countdownText, eliminationBannerText);
     }
 
     void RefreshVehiclePickerLabels()
@@ -892,6 +912,17 @@ public class GameManager : MonoBehaviour
 
     Color GetTimerDefaultColor(int playerIndex) => playerIndex == 1 ? timerDefaultColorP2 : timerDefaultColorP1;
 
+    // TwoPlayerUIStyler tints a "<Name>Bg" panel behind popups/the elimination banner; keep it
+    // in sync whenever the text itself is toggled so it doesn't linger after the text hides.
+    void SetHighlightPanelActive(TMP_Text label, bool active)
+    {
+        if (label == null)
+            return;
+        Transform panel = label.transform.parent.Find(label.gameObject.name + "Bg");
+        if (panel != null)
+            panel.gameObject.SetActive(active);
+    }
+
     IEnumerator PenaltyFeedback(int playerIndex, float seconds)
     {
         var popup = GetPenaltyPopup(playerIndex);
@@ -901,6 +932,7 @@ public class GameManager : MonoBehaviour
             popup.text = "-" + Mathf.RoundToInt(seconds) + "s";
             popup.color = PlayerColors.PenaltyRed;
             popup.gameObject.SetActive(true);
+            SetHighlightPanelActive(popup, true);
         }
         if (timer != null)
             timer.color = PlayerColors.PenaltyRed;
@@ -910,6 +942,7 @@ public class GameManager : MonoBehaviour
         if (popup != null)
         {
             popup.gameObject.SetActive(false);
+            SetHighlightPanelActive(popup, false);
             popup.color = playerIndex == 1 ? penaltyPopupDefaultColorP2 : penaltyPopupDefaultColorP1;
         }
         if (timer != null)
@@ -924,6 +957,7 @@ public class GameManager : MonoBehaviour
             popup.text = "+" + Mathf.RoundToInt(seconds) + "s";
             popup.color = PlayerColors.BonusGreen;
             popup.gameObject.SetActive(true);
+            SetHighlightPanelActive(popup, true);
         }
 
         yield return new WaitForSeconds(0.6f);
@@ -931,6 +965,7 @@ public class GameManager : MonoBehaviour
         if (popup != null)
         {
             popup.gameObject.SetActive(false);
+            SetHighlightPanelActive(popup, false);
             popup.color = playerIndex == 1 ? penaltyPopupDefaultColorP2 : penaltyPopupDefaultColorP1;
         }
     }
@@ -943,11 +978,13 @@ public class GameManager : MonoBehaviour
         eliminationBannerText.text = PlayerColors.GetFullLabel(playerIndex) + " IS OUT!";
         eliminationBannerText.color = PlayerColors.GetColor(playerIndex);
         eliminationBannerText.gameObject.SetActive(true);
+        SetHighlightPanelActive(eliminationBannerText, true);
         if (sfxSource != null && impactClip != null)
             sfxSource.PlayOneShot(impactClip);
 
         yield return new WaitForSeconds(1.5f);
         eliminationBannerText.gameObject.SetActive(false);
+        SetHighlightPanelActive(eliminationBannerText, false);
     }
 
     void UpdateTimerDisplay()

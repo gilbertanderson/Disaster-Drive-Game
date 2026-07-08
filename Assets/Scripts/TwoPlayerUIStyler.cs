@@ -2,49 +2,51 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-// Runtime polish for 2P HUD: tinted timer panels, styled popups, and game-over accents.
+// Runtime polish for 2P HUD: bold timer text, tinted popup/banner backgrounds.
 public class TwoPlayerUIStyler : MonoBehaviour
 {
-    [SerializeField] private GameManager gameManager;
-    [SerializeField] private TMP_Text timerText;
-    [SerializeField] private TMP_Text timer2Text;
-    [SerializeField] private TMP_Text penaltyPopupP1;
-    [SerializeField] private TMP_Text penaltyPopupP2;
-    [SerializeField] private TMP_Text countdownText;
-    [SerializeField] private TMP_Text eliminationBannerText;
-    void Awake()
-    {
-        if (gameManager == null)
-            gameManager = FindAnyObjectByType<GameManager>();
-        if (timerText == null)
-            timerText = GameObject.Find("TimerText")?.GetComponent<TMP_Text>();
-        if (timer2Text == null)
-            timer2Text = GameObject.Find("Timer2Text")?.GetComponent<TMP_Text>();
-        if (penaltyPopupP1 == null)
-            penaltyPopupP1 = GameObject.Find("PenaltyPopupText")?.GetComponent<TMP_Text>();
-        if (penaltyPopupP2 == null)
-            penaltyPopupP2 = GameObject.Find("PenaltyPopupP2Runtime")?.GetComponent<TMP_Text>();
-        if (countdownText == null)
-            countdownText = GameObject.Find("CountdownTextRuntime")?.GetComponent<TMP_Text>();
-        if (eliminationBannerText == null)
-            eliminationBannerText = GameObject.Find("EliminationBannerRuntime")?.GetComponent<TMP_Text>();
+    private GameManager gameManager;
+    private TMP_Text timerText;
+    private TMP_Text timer2Text;
+    private TMP_Text penaltyPopupP1;
+    private TMP_Text penaltyPopupP2;
+    private TMP_Text countdownText;
+    private TMP_Text eliminationBannerText;
 
-        StyleTimerPanel(timerText, PlayerColors.P1, -220f);
-        StyleTimerPanel(timer2Text, PlayerColors.P2, 220f);
-        StylePopup(penaltyPopupP1, PlayerColors.P1);
-        StylePopup(penaltyPopupP2, PlayerColors.P2);
+    // GameManager already holds resolved references to every one of these; passing them in
+    // directly avoids GameObject.Find, which silently fails on objects that start inactive.
+    public void Init(GameManager manager, TMP_Text timer, TMP_Text timer2, TMP_Text popupP1,
+        TMP_Text popupP2, TMP_Text countdown, TMP_Text banner)
+    {
+        gameManager = manager;
+        timerText = timer;
+        timer2Text = timer2;
+        penaltyPopupP1 = popupP1;
+        penaltyPopupP2 = popupP2;
+        countdownText = countdown;
+        eliminationBannerText = banner;
+
+        Refresh();
         StyleCountdown(countdownText);
         StyleBanner(eliminationBannerText);
     }
 
-    void StyleTimerPanel(TMP_Text label, Color accent, float panelOffsetX)
+    // Re-syncs popup styling. Call again whenever GameManager moves or (de)activates the
+    // timers, e.g. every SetTwoPlayerMode call.
+    public void Refresh()
+    {
+        StyleTimer(timerText);
+        StyleTimer(timer2Text);
+        StylePopup(penaltyPopupP1, PlayerColors.P1);
+        StylePopup(penaltyPopupP2, PlayerColors.P2);
+    }
+
+    void StyleTimer(TMP_Text label)
     {
         if (label == null)
             return;
 
         label.fontStyle = FontStyles.Bold;
-        var panel = CreatePanelBehind(label, "TimerPanel", accent, new Vector2(260f, 72f), panelOffsetX);
-        panel.transform.SetSiblingIndex(label.transform.GetSiblingIndex());
     }
 
     void StylePopup(TMP_Text popup, Color accent)
@@ -54,7 +56,8 @@ public class TwoPlayerUIStyler : MonoBehaviour
 
         popup.fontStyle = FontStyles.Bold;
         popup.fontSize = Mathf.Max(popup.fontSize, 42f);
-        CreatePanelBehind(popup, popup.name + "Bg", accent, new Vector2(140f, 56f), 0f, 0.18f);
+        var panel = CreatePanelBehind(popup, popup.gameObject.name + "Bg", accent, new Vector2(140f, 56f), 0.18f);
+        panel.SetActive(popup.gameObject.activeSelf);
     }
 
     void StyleCountdown(TMP_Text countdown)
@@ -75,14 +78,21 @@ public class TwoPlayerUIStyler : MonoBehaviour
         banner.fontStyle = FontStyles.Bold;
         banner.fontSize = Mathf.Max(banner.fontSize, 54f);
         banner.alignment = TextAlignmentOptions.Center;
-        CreatePanelBehind(banner, "EliminationBannerBg", new Color(0f, 0f, 0f, 0.55f), new Vector2(720f, 100f), 0f, 0.35f);
+        var panel = CreatePanelBehind(banner, banner.gameObject.name + "Bg", new Color(0f, 0f, 0f, 0.55f), new Vector2(720f, 100f), 0.35f);
+        panel.SetActive(banner.gameObject.activeSelf);
     }
 
-    GameObject CreatePanelBehind(TMP_Text label, string name, Color accent, Vector2 size, float offsetX, float alpha = 0.22f)
+    // Creates (or repositions, if it already exists) a tinted panel directly behind label,
+    // sharing its anchor/pivot so it always sits in place even if label later moves.
+    GameObject CreatePanelBehind(TMP_Text label, string name, Color accent, Vector2 size, float alpha = 0.22f)
     {
+        Vector2 pos = label.rectTransform.anchoredPosition + new Vector2(0f, -8f);
         Transform existing = label.transform.parent.Find(name);
         if (existing != null)
+        {
+            existing.GetComponent<RectTransform>().anchoredPosition = pos;
             return existing.gameObject;
+        }
 
         var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         go.transform.SetParent(label.transform.parent, false);
@@ -90,7 +100,7 @@ public class TwoPlayerUIStyler : MonoBehaviour
         rt.anchorMin = label.rectTransform.anchorMin;
         rt.anchorMax = label.rectTransform.anchorMax;
         rt.pivot = label.rectTransform.pivot;
-        rt.anchoredPosition = label.rectTransform.anchoredPosition + new Vector2(offsetX, -8f);
+        rt.anchoredPosition = pos;
         rt.sizeDelta = size;
 
         var image = go.GetComponent<Image>();
