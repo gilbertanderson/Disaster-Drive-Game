@@ -127,4 +127,4 @@ Same attribution shown on the pause screen (top-right):
 | **Music** | ["Climber"](https://thewzzard.com) by The Wzzard |
 | **Sound & UI FX** | Unity Create With Code library |
 
-Third-party vehicle and environment assets are credited in their respective `Assets/` package folders where applicable.
+Third-party vehicle and environment assets — see [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for the full attribution list.
