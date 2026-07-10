@@ -4,10 +4,21 @@
       "mcp__unity-mcp__Unity_ManageEditor",
       "mcp__unity-mcp__Unity_ManageGameObject",
       "mcp__unity-mcp__Unity_ManageScene",
+      "mcp__unity-mcp__Unity_RunCommand",
       "mcp__UnityMCP__read_console",
       "mcp__UnityMCP__get_test_job",
       "mcp__UnityMCP__find_gameobjects",
+      "mcp__UnityMCP__manage_camera",
+      "mcp__UnityMCP__manage_components",
+      "mcp__UnityMCP__run_tests",
+      "mcp__UnityMCP__manage_scene",
+      "mcp__UnityMCP__manage_gameobject",
       "Bash(awk *)",
+      "Bash(gh pr *)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(git worktree *)",
+      "Bash(npx tsc --noEmit *)",
       "mcp__UnityMCP__refresh_unity",
       "mcp__UnityMCP__execute_code",
       "mcp__UnityMCP__manage_editor",
@@ -19,10 +30,7 @@
       "mcp__unity-mcp__Unity_FindProjectAssets",
       "mcp__plugin_firebase_firebase__firebase_get_environment",
       "mcp__plugin_firebase_firebase__firebase_get_sdk_config",
-      "mcp__claude_ai_Vercel__get_project",
-      "Bash(git log *)",
-      "Bash(git diff *)",
-      "Bash(npx tsc --noEmit *)"
+      "mcp__claude_ai_Vercel__get_project"
     ]
   }
 }
