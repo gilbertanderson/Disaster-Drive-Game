@@ -11,6 +11,8 @@ public class GroundScroller : MonoBehaviour
     [SerializeField] private float worldScrollSpeed = 5f;                      // World units/sec for props (trees, rocks via MoveDown)
 
     public float WorldSpeed => worldScrollSpeed;
+
+    public float PropScrollSpeed(float multiplier) => worldScrollSpeed * multiplier;
     public Vector3 WorldMoveDirection
     {
         get
@@ -36,7 +38,7 @@ public class GroundScroller : MonoBehaviour
 
     void Update()
     {
-        if (gameManager != null && (!gameManager.IsGameActive || gameManager.IsPaused))
+        if (gameManager != null && !gameManager.IsWorldAnimating)
             return;
 
         offset += scrollSpeed * Time.deltaTime * scrollDirection.normalized;

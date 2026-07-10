@@ -38,7 +38,7 @@ public class TreeScroller : MonoBehaviour
 
     void Update()
     {
-        if (gameManager != null && (!gameManager.IsGameActive || gameManager.IsPaused))
+        if (gameManager != null && !gameManager.IsWorldAnimating)
             return;
 
         if (grassScroller != null)
@@ -61,7 +61,7 @@ public class TreeScroller : MonoBehaviour
             return;
 
         moveDirection = grassScroller.WorldMoveDirection;
-        speed = grassScroller.WorldSpeed * treeSpeedMultiplier;
+        speed = grassScroller.PropScrollSpeed(treeSpeedMultiplier);
     }
 
     void UpdateBottomThreshold()

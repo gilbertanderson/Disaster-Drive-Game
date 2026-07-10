@@ -1,39 +1,131 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 public class SpawnManager : MonoBehaviour
 {
-    public GameObject[] obstacles;                // Obstacle prefab(s) to spawn
+    public GameObject[] obstacles;                // Gameplay shell prefab(s); rockVisuals swaps the mesh at spawn
 
-    public float spawnX = 7.0f;                   // Travel-axis spawn line near the top of the field
-    public float spawnY = 0.6f;                   // Height the rocks sit at above the ground
+    public float spawnX = 7.0f;                   // Fallback travel-axis spawn line, used only if no camera is found
     public string wallsParentName = "Walls";      // Parent whose children mark the lateral (Z) bounds
     public float lateralPadding = 0.5f;           // Keep spawns a little inside the walls so rocks don't clip them
-    public int maxObstacles = 4;                  // Cap on how many rocks may exist at once
+    public int maxObstacles = 5;                  // Cap on how many rocks may exist at once
+    [SerializeField] private float spawnMargin = 2.0f;  // Extra distance past the camera's top edge so rocks spawn fully off-screen
 
-    [SerializeField] private float obstacleSpawnInterval = 2.5f;  // Seconds between spawns at the start
+    [SerializeField] private float obstacleSpawnInterval = 2.2f;  // Seconds between spawns at the start
     [SerializeField] private float startDelay = 2.0f;             // Delay before the first spawn
-    [SerializeField] private float minSpawnInterval = 0.8f;       // Floor so the difficulty ramp can't spawn absurdly fast
-    [SerializeField] private int maxObstaclesCap = 8;             // Ceiling the ramp can raise maxObstacles to
+    [SerializeField] private float minSpawnInterval = 0.65f;      // Floor so the difficulty ramp can't spawn absurdly fast
+    [SerializeField] private int maxObstaclesCap = 14;            // Ceiling the ramp can raise maxObstacles to
+    [SerializeField] private int obstaclesPerWaveIncrease = 2;    // Extra on-screen rock slots added each difficulty wave
 
     [Header("Rock Variety")]
-    [SerializeField] private Vector2 rockScaleRange = new Vector2(0.7f, 1.4f);  // Random size multiplier per rock
-    [SerializeField] private Vector2 rockSpeedJitter = new Vector2(-1f, 2f);    // Random speed offset per rock
+    [SerializeField] private GameObject[] rockVisuals;  // Mesh prefabs swapped onto the shell (PolyOne, JC, etc.)
+    [SerializeField] private Vector2 rockScaleRange = new Vector2(1.3f, 1.4f);  // Random size multiplier per rock
+    [SerializeField] private float maxRockScaleMultiplier = 1.7f;             // Ceiling on total scale relative to the authored rock-visual prefab
+    [SerializeField] private float rockSpeedMultiplier = 2.25f;                  // Match decorative trees so rocks travel at the same world speed
+    [SerializeField] private float minRockVisualFootprint = 1.2f;                // Drop prefab variants smaller than this at authored scale
+    [SerializeField] private float minRockFootprint;  // 0 = auto-detect from convertible at runtime
+    [SerializeField] private float minRockHeight = 1.8f;                         // Minimum world-space visual height after scaling
+    [SerializeField] private float rockGroundBurialFraction = 0.2f;              // Fraction of rock height below the road surface
+    [SerializeField] private float groundLevelY;                                 // 0 = auto-detect from Ground / GroundScroller at runtime
+
+    private static readonly string[] KnownRockVisualPaths =
+    {
+        "Assets/Prefabs/RockVisuals/RockVisual_Boulder.prefab",
+        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_02.prefab",
+        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_03.prefab",
+        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_04.prefab",
+        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_05.prefab",
+        "Assets/Prefabs/RockVisuals/RockVisual_Rocks_09.prefab",
+    };
 
     private float currentInterval;                // Live spawn interval; shrinks as difficulty ramps
-    private float rockSpeedBonus;                 // Added to each newly spawned rock's speed
     private bool isSpawning = true;
     private float minZ = -5.0f;                   // Lateral spawn range between the walls (recomputed from the walls in Start)
     private float maxZ = 10.0f;
     private GameManager gameManager;              // Rocks only flow while the game is active
+    private GroundScroller groundScroller;        // Used to sync rock movement with the decorative trees
+    private GameObject[] validRockVisuals;        // Cached, spawn-safe prefab list
+    private float cachedGroundLevelY;             // Road surface Y used for burial alignment
+    private bool spawnOnHighSide;
+    private Camera gameCamera;                    // Used to place spawnX just past the camera's real top edge
 
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
+    void OnValidate()
+    {
+#if UNITY_EDITOR
+        RepairRockVisualReferences();
+#endif
+    }
+
     void Start()
     {
+#if UNITY_EDITOR
+        RepairRockVisualReferences();
+#endif
+        EnsureRockVisualReferences();
+        validRockVisuals = BuildValidRockVisualList();
+
         currentInterval = obstacleSpawnInterval;
         gameManager = FindAnyObjectByType<GameManager>();
-        FindWallRange();                          // Work out the lateral spawn range from the side walls
+        groundScroller = FindAnyObjectByType<GroundScroller>();
+        CacheGroundLevelY();
+        FindWallRange();
+        CacheMinRockFootprint();
+        CacheSpawnX();
         StartCoroutine(SpawnLoop());
+    }
+
+    // Places spawnX just past the camera's real top edge so rocks always spawn
+    // fully off-screen, instead of relying on a hand-tuned constant that can
+    // fall short on a different camera setup or aspect ratio.
+    void CacheSpawnX()
+    {
+        gameCamera = Camera.main;
+        if (gameCamera == null)
+            return;
+
+        Vector3 moveDirection = ScreenEdgeUtility.ComputeTravelDirection(gameCamera);
+        Vector3 topWorld = ScreenEdgeUtility.TopWorldPoint(gameCamera, cachedGroundLevelY);
+        Vector3 entryPoint = topWorld - moveDirection.normalized * spawnMargin;
+        spawnX = entryPoint.x;
+    }
+
+    void CacheGroundLevelY()
+    {
+        if (groundLevelY > 0.001f)
+        {
+            cachedGroundLevelY = groundLevelY;
+            return;
+        }
+
+        var ground = GameObject.Find("Ground");
+        if (ground != null)
+        {
+            cachedGroundLevelY = ground.transform.position.y;
+            return;
+        }
+
+        if (groundScroller != null)
+        {
+            cachedGroundLevelY = groundScroller.transform.position.y;
+            return;
+        }
+
+        cachedGroundLevelY = 0.06f;
+    }
+
+    void CacheMinRockFootprint()
+    {
+        if (minRockFootprint > 0.001f)
+            return;
+
+        var selector = FindAnyObjectByType<VehicleSelector>();
+        if (selector != null)
+            minRockFootprint = selector.GetVehicleFootprint("SM_Veh_Convertable_01");
     }
 
     // Coroutine instead of InvokeRepeating so the interval can shrink over time
@@ -50,13 +142,12 @@ public class SpawnManager : MonoBehaviour
         }
     }
 
-    // Called by GameManager on each difficulty bump: rocks travel faster, spawn
-    // sooner, and slightly more of them are allowed on the field at once.
-    public void IncreaseDifficulty(float rockSpeedIncrease, float intervalMultiplier)
+    // Called by GameManager on each difficulty bump: rocks spawn sooner and
+    // slightly more of them are allowed on the field at once.
+    public void IncreaseDifficulty(float intervalMultiplier)
     {
-        rockSpeedBonus += rockSpeedIncrease;
         currentInterval = Mathf.Max(currentInterval * intervalMultiplier, minSpawnInterval);
-        maxObstacles = Mathf.Min(maxObstacles + 1, maxObstaclesCap);
+        maxObstacles = Mathf.Min(maxObstacles + obstaclesPerWaveIncrease, maxObstaclesCap);
     }
 
     // Called by GameManager when the timer runs out.
@@ -67,52 +158,568 @@ public class SpawnManager : MonoBehaviour
 
     void SpawnObstacle()
     {
-        if (obstacles.Length == 0)
+        if (obstacles == null || obstacles.Length == 0)
             return;
 
-        // Don't add more rocks once we're at the cap, so the field can't fill up endlessly.
-        if (FindObjectsByType<MoveDown>(FindObjectsInactive.Exclude).Length >= maxObstacles)
+        if (MoveDown.ActiveRockCount >= maxObstacles)
             return;
 
-        // Spawn on the fixed X line, spread randomly across the field between
-        // the two side walls (Z). The rock then travels down the screen.
-        int obstacleIndex = Random.Range(0, obstacles.Length);
-        if (obstacles[obstacleIndex] == null)
-            return;
+        try
+        {
+            SpawnObstacleInternal();
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"SpawnManager failed to spawn a rock: {ex.Message}", this);
+        }
+    }
 
-        // Vary each rock: random size (bigger rocks sit higher so they don't clip the
-        // ground) and a random speed offset on top of the difficulty ramp's bonus.
+    // Three fixed lanes (left / middle / right) instead of a fully continuous
+    // range, so every rock has a clear gap on at least one side to dodge into.
+    const int LaneCount = 3;
+
+    float PickLaneZ(float low, float high)
+    {
+        float laneWidth = (high - low) / LaneCount;
+        int lane = Random.Range(0, LaneCount);
+        float laneLow = low + laneWidth * lane;
+        float laneJitterPad = laneWidth * 0.15f;  // keep spawns away from lane edges so lanes read as distinct
+        return Random.Range(laneLow + laneJitterPad, laneLow + laneWidth - laneJitterPad);
+    }
+
+    float PickSpawnZ()
+    {
+        if (gameManager != null && gameManager.IsTwoPlayerMode)
+        {
+            float midZ = (minZ + maxZ) * 0.5f;
+            float low = spawnOnHighSide ? midZ : minZ;
+            float high = spawnOnHighSide ? maxZ : midZ;
+            spawnOnHighSide = !spawnOnHighSide;
+            return PickLaneZ(low, high);
+        }
+
+        return PickLaneZ(minZ, maxZ);
+    }
+
+    void SpawnObstacleInternal()
+    {
         float sizeMultiplier = Random.Range(rockScaleRange.x, rockScaleRange.y);
-        float randomZ = Random.Range(minZ, maxZ);
-        Vector3 spawnPos = new Vector3(spawnX, spawnY * sizeMultiplier, randomZ);
-        GameObject rock = Instantiate(obstacles[obstacleIndex], spawnPos, obstacles[obstacleIndex].transform.rotation);
+        float randomZ = PickSpawnZ();
+        CacheSpawnX();  // Recompute fresh every spawn so a stale camera/aspect snapshot can never place a rock on-screen.
+        Vector3 spawnPos = new Vector3(spawnX, cachedGroundLevelY, randomZ);
+
+        GameObject rock;
+        GameObject visual = null;
+        if (HasUsableRockVisuals())
+        {
+            if (obstacles[0] == null)
+                return;
+            rock = Instantiate(obstacles[0], spawnPos, obstacles[0].transform.rotation);
+            visual = ApplyRandomVisual(rock);
+        }
+        else
+        {
+            int obstacleIndex = Random.Range(0, obstacles.Length);
+            if (obstacles[obstacleIndex] == null)
+                return;
+            rock = Instantiate(obstacles[obstacleIndex], spawnPos, obstacles[obstacleIndex].transform.rotation);
+            visual = GetRockVisual(rock);
+        }
+
+        Vector3 baseScale = rock.transform.localScale;
         rock.transform.localScale *= sizeMultiplier;
+        EnforceMinimumRockFootprint(rock);
+        EnforceMinimumRockHeight(rock);
+        ClampMaximumRockScale(rock, baseScale);
+
+        if (visual != null)
+        {
+            AlignVisualToGround(visual, rock);
+            FitBoxColliderToVisual(rock, visual);
+        }
+
+        ConfigureRockShadows(rock);
 
         MoveDown mover = rock.GetComponentInChildren<MoveDown>();
         if (mover != null)
-            mover.speed = Mathf.Max(1.5f, mover.speed + rockSpeedBonus + Random.Range(rockSpeedJitter.x, rockSpeedJitter.y));
+        {
+            float scrollSpeed = groundScroller != null
+                ? groundScroller.PropScrollSpeed(rockSpeedMultiplier)
+                : mover.speed;
+            mover.speed = Mathf.Max(1.5f, scrollSpeed);
+        }
     }
 
-    // Read the side walls so spawns land between them (matches the clamp the rocks use).
-    void FindWallRange()
+    GameObject ApplyRandomVisual(GameObject rock)
     {
-        GameObject wallsParent = GameObject.Find(wallsParentName);
-        if (wallsParent == null || wallsParent.transform.childCount < 2)
-            return;                               // Keep the default range if the walls can't be found
+        GameObject visualPrefab = PickRandomRockVisual();
+        if (visualPrefab == null)
+            return GetRockVisual(rock);
 
-        float lowZ = float.NegativeInfinity;      // Highest inner face on the low-Z side
-        float highZ = float.PositiveInfinity;     // Lowest inner face on the high-Z side
+        GameObject visual = TryInstantiateVisual(visualPrefab, rock.transform);
+        if (visual == null)
+            return GetRockVisual(rock);
 
-        foreach (Transform wall in wallsParent.transform)
+        for (int i = rock.transform.childCount - 1; i >= 0; i--)
         {
-            float halfDepth = wall.localScale.z * 0.5f;
-            if (wall.position.z < transform.position.z)        // Wall on the low-Z side of the field
-                lowZ = Mathf.Max(lowZ, wall.position.z + halfDepth);
-            else                                               // Wall on the high-Z side
-                highZ = Mathf.Min(highZ, wall.position.z - halfDepth);
+            GameObject child = rock.transform.GetChild(i).gameObject;
+            if (child != visual)
+                Destroy(child);
         }
 
-        minZ = lowZ + lateralPadding;
-        maxZ = highZ - lateralPadding;
+        // Yaw the SHELL, not the visual: the BoxCollider is axis-aligned to the
+        // shell, so a yawed visual inside an unrotated shell forces an inflated
+        // axis-aligned box (up to ~40% per axis for elongated rocks) — cars were
+        // "hitting" rocks they only drove near. Rotating the shell keeps the box
+        // hugging the mesh; rock motion is positional so gameplay is unaffected.
+        Vector3 prefabLocalPos = visual.transform.localPosition;
+        rock.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f) * rock.transform.rotation;
+        visual.transform.localRotation = Quaternion.identity;
+        visual.transform.localPosition = prefabLocalPos;
+
+        foreach (var childCollider in visual.GetComponentsInChildren<Collider>())
+            childCollider.enabled = false;
+
+        return visual;
+    }
+
+    GameObject TryInstantiateVisual(GameObject visualPrefab, Transform parent)
+    {
+        try
+        {
+            return Instantiate(visualPrefab, parent);
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning($"SpawnManager skipped invalid rock visual '{visualPrefab.name}': {ex.Message}", this);
+            return null;
+        }
+    }
+
+    static GameObject GetRockVisual(GameObject rock)
+    {
+        if (rock.transform.childCount > 0)
+            return rock.transform.GetChild(0).gameObject;
+        return rock;
+    }
+
+    static float MeasureRockFootprint(GameObject rock)
+    {
+        var renderers = rock.GetComponentsInChildren<Renderer>();
+        if (renderers.Length == 0)
+            return 0f;
+
+        Bounds bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
+
+        return Mathf.Max(bounds.size.x, bounds.size.z);
+    }
+
+    void EnforceMinimumRockFootprint(GameObject rock)
+    {
+        if (minRockFootprint <= 0.001f)
+            return;
+
+        float footprint = MeasureRockFootprint(rock);
+        if (footprint > 0.001f && footprint < minRockFootprint)
+            rock.transform.localScale *= minRockFootprint / footprint;
+    }
+
+    static float MeasureRockHeight(GameObject rock)
+    {
+        var renderers = rock.GetComponentsInChildren<Renderer>();
+        if (renderers.Length == 0)
+            return 0f;
+
+        Bounds bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
+
+        return bounds.size.y;
+    }
+
+    void EnforceMinimumRockHeight(GameObject rock)
+    {
+        if (minRockHeight <= 0.001f)
+            return;
+
+        float height = MeasureRockHeight(rock);
+        if (height > 0.001f && height < minRockHeight)
+            rock.transform.localScale *= minRockHeight / height;
+    }
+
+    // Pulls the scale back down if the base multiplier plus the min-footprint/
+    // min-height floors above compounded into an oversized rock.
+    void ClampMaximumRockScale(GameObject rock, Vector3 baseScale)
+    {
+        if (maxRockScaleMultiplier <= 0.001f)
+            return;
+
+        float baseX = Mathf.Max(baseScale.x, 0.0001f);
+        float ratio = rock.transform.localScale.x / baseX;
+        if (ratio > maxRockScaleMultiplier)
+            rock.transform.localScale *= maxRockScaleMultiplier / ratio;
+    }
+
+    bool HasUsableRockVisuals()
+    {
+        if (validRockVisuals == null)
+            validRockVisuals = BuildValidRockVisualList();
+        return validRockVisuals.Length > 0;
+    }
+
+    GameObject PickRandomRockVisual()
+    {
+        if (validRockVisuals == null || validRockVisuals.Length == 0)
+            validRockVisuals = BuildValidRockVisualList();
+        if (validRockVisuals.Length == 0)
+            return null;
+        return validRockVisuals[Random.Range(0, validRockVisuals.Length)];
+    }
+
+    GameObject[] BuildValidRockVisualList()
+    {
+        var candidates = new List<GameObject>();
+        if (rockVisuals != null)
+        {
+            foreach (var entry in rockVisuals)
+            {
+                if (TryGetRockVisualPrefab(entry, out GameObject prefab) && !candidates.Contains(prefab))
+                    candidates.Add(prefab);
+            }
+        }
+
+        if (candidates.Count == 0)
+        {
+            foreach (var path in KnownRockVisualPaths)
+            {
+                var loaded = LoadRockVisualAtPath(path);
+                if (loaded != null && !candidates.Contains(loaded))
+                    candidates.Add(loaded);
+            }
+        }
+
+        return FilterRockVisualsByFootprint(candidates);
+    }
+
+    GameObject[] FilterRockVisualsByFootprint(List<GameObject> candidates)
+    {
+        if (minRockVisualFootprint <= 0.001f)
+            return candidates.ToArray();
+
+        var valid = new List<GameObject>();
+        var excluded = new List<string>();
+        foreach (var prefab in candidates)
+        {
+            if (prefab == null)
+                continue;
+
+            float footprint = MeasurePrefabFootprint(prefab);
+            if (footprint >= minRockVisualFootprint)
+                valid.Add(prefab);
+            else
+                excluded.Add($"{prefab.name} ({footprint:F2})");
+        }
+
+        if (excluded.Count > 0)
+            Debug.Log($"SpawnManager excluded small rock visuals (min footprint {minRockVisualFootprint:F2}): {string.Join(", ", excluded)}", this);
+
+        if (valid.Count == 0 && candidates.Count > 0)
+        {
+            Debug.LogWarning("SpawnManager: all rock visuals were below minRockVisualFootprint; keeping largest candidate.", this);
+            GameObject largest = candidates[0];
+            float largestFootprint = MeasurePrefabFootprint(largest);
+            for (int i = 1; i < candidates.Count; i++)
+            {
+                float footprint = MeasurePrefabFootprint(candidates[i]);
+                if (footprint > largestFootprint)
+                {
+                    largest = candidates[i];
+                    largestFootprint = footprint;
+                }
+            }
+            valid.Add(largest);
+        }
+
+        return valid.ToArray();
+    }
+
+    static float MeasurePrefabFootprint(GameObject prefab)
+    {
+        if (prefab == null)
+            return 0f;
+
+        float maxFootprint = 0f;
+        foreach (var meshFilter in prefab.GetComponentsInChildren<MeshFilter>(true))
+        {
+            if (meshFilter.sharedMesh == null)
+                continue;
+
+            Vector3 scaledSize = Vector3.Scale(meshFilter.sharedMesh.bounds.size, GetHierarchyScale(meshFilter.transform));
+            maxFootprint = Mathf.Max(maxFootprint, Mathf.Max(scaledSize.x, scaledSize.z));
+        }
+
+        if (maxFootprint > 0.001f)
+            return maxFootprint;
+
+        if (!Application.isPlaying)
+            return 0f;
+
+        GameObject instance = Instantiate(prefab);
+        try
+        {
+            return MeasureRockFootprint(instance);
+        }
+        finally
+        {
+            Destroy(instance);
+        }
+    }
+
+    static Vector3 GetHierarchyScale(Transform transform)
+    {
+        Vector3 scale = transform.localScale;
+        Transform parent = transform.parent;
+        while (parent != null)
+        {
+            scale = Vector3.Scale(scale, parent.localScale);
+            parent = parent.parent;
+        }
+
+        return scale;
+    }
+
+    static bool TryGetRockVisualPrefab(Object entry, out GameObject prefab)
+    {
+        prefab = null;
+        if (entry == null)
+            return false;
+
+        if (entry is GameObject gameObject)
+        {
+            prefab = gameObject;
+            return true;
+        }
+
+#if UNITY_EDITOR
+        string path = AssetDatabase.GetAssetPath(entry);
+        if (!string.IsNullOrEmpty(path))
+        {
+            prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            return prefab != null;
+        }
+#endif
+        return false;
+    }
+
+    static GameObject LoadRockVisualAtPath(string path)
+    {
+#if UNITY_EDITOR
+        return AssetDatabase.LoadAssetAtPath<GameObject>(path);
+#else
+        return null;
+#endif
+    }
+
+    void EnsureRockVisualReferences()
+    {
+        if (rockVisuals != null && rockVisuals.Length > 0)
+            return;
+
+        rockVisuals = LoadAllKnownRockVisuals();
+    }
+
+    static GameObject[] LoadAllKnownRockVisuals()
+    {
+        var loaded = new List<GameObject>();
+        foreach (var path in KnownRockVisualPaths)
+        {
+            var prefab = LoadRockVisualAtPath(path);
+            if (prefab != null && !loaded.Contains(prefab))
+                loaded.Add(prefab);
+        }
+
+        return loaded.ToArray();
+    }
+
+#if UNITY_EDITOR
+    void RepairRockVisualReferences()
+    {
+        if (rockVisuals == null || rockVisuals.Length == 0)
+        {
+            rockVisuals = LoadAllKnownRockVisuals();
+            EditorUtility.SetDirty(this);
+            return;
+        }
+        var serializedObject = new SerializedObject(this);
+        SerializedProperty arrayProperty = serializedObject.FindProperty("rockVisuals");
+        if (arrayProperty == null || !arrayProperty.isArray)
+            return;
+
+        var repaired = new List<GameObject>();
+        bool changed = false;
+        for (int i = 0; i < arrayProperty.arraySize; i++)
+        {
+            SerializedProperty element = arrayProperty.GetArrayElementAtIndex(i);
+            Object current = element.objectReferenceValue;
+            if (TryGetRockVisualPrefab(current, out GameObject prefab))
+            {
+                if (!repaired.Contains(prefab))
+                    repaired.Add(prefab);
+                if (current != prefab)
+                {
+                    element.objectReferenceValue = prefab;
+                    changed = true;
+                }
+                continue;
+            }
+
+            changed = true;
+            if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(current, out string guid, out long _))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!string.IsNullOrEmpty(path))
+                {
+                    var loaded = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                    if (loaded != null && !repaired.Contains(loaded))
+                    {
+                        repaired.Add(loaded);
+                        element.objectReferenceValue = loaded;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        if (repaired.Count == 0)
+            repaired.AddRange(LoadAllKnownRockVisuals());
+
+        if (changed || repaired.Count != rockVisuals.Length)
+        {
+            rockVisuals = repaired.ToArray();
+            serializedObject.Update();
+            arrayProperty.arraySize = rockVisuals.Length;
+            for (int i = 0; i < rockVisuals.Length; i++)
+                arrayProperty.GetArrayElementAtIndex(i).objectReferenceValue = rockVisuals[i];
+            serializedObject.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(this);
+        }
+        else
+        {
+            rockVisuals = repaired.ToArray();
+        }
+    }
+#endif
+
+    void AlignVisualToGround(GameObject visual, GameObject rock)
+    {
+        var renderers = visual.GetComponentsInChildren<Renderer>();
+        if (renderers.Length == 0)
+            return;
+
+        Bounds bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
+
+        float targetBottomY = cachedGroundLevelY - rockGroundBurialFraction * bounds.size.y;
+        rock.transform.position += Vector3.up * (targetBottomY - bounds.min.y);
+    }
+
+    static void ConfigureRockShadows(GameObject rock)
+    {
+        foreach (var renderer in rock.GetComponentsInChildren<Renderer>())
+        {
+            renderer.shadowCastingMode = ShadowCastingMode.On;
+            renderer.receiveShadows = true;
+        }
+    }
+
+    // Fits the box in the ROCK'S LOCAL SPACE by transforming each mesh's corners,
+    // not by wrapping world-space renderer AABBs: the visual gets a random Y
+    // rotation at spawn, and a world AABB of a rotated elongated rock inflates up
+    // to ~40% per axis — cars were "hitting" rocks they only drove close to.
+    void FitBoxColliderToVisual(GameObject rock, GameObject visual)
+    {
+        var collider = rock.GetComponent<BoxCollider>();
+        if (collider == null)
+            return;
+
+        const float fitPadding = 1.02f;  // small margin so the box safely encloses the mesh
+
+        if (TryGetLocalMeshBounds(rock.transform, visual, out Bounds localBounds))
+        {
+            collider.center = localBounds.center;
+            collider.size = localBounds.size * fitPadding;
+            return;
+        }
+
+        // Fallback (no readable meshes, e.g. skinned-only visuals): world AABB fit.
+        var renderers = visual.GetComponentsInChildren<Renderer>();
+        if (renderers.Length == 0)
+            return;
+
+        Bounds bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
+
+        Vector3 lossyScale = rock.transform.lossyScale;
+        Vector3 safeScale = new Vector3(
+            Mathf.Max(Mathf.Abs(lossyScale.x), 0.0001f),
+            Mathf.Max(Mathf.Abs(lossyScale.y), 0.0001f),
+            Mathf.Max(Mathf.Abs(lossyScale.z), 0.0001f));
+
+        collider.center = rock.transform.InverseTransformPoint(bounds.center);
+        collider.size = new Vector3(
+            bounds.size.x / safeScale.x,
+            bounds.size.y / safeScale.y,
+            bounds.size.z / safeScale.z) * fitPadding;
+    }
+
+    // Encapsulates every mesh corner under `visual`, expressed in `root`'s local
+    // space, so the box tracks the visual's own rotation instead of the world axes.
+    static bool TryGetLocalMeshBounds(Transform root, GameObject visual, out Bounds localBounds)
+    {
+        localBounds = default;
+        bool hasBounds = false;
+
+        foreach (var meshFilter in visual.GetComponentsInChildren<MeshFilter>())
+        {
+            if (meshFilter.sharedMesh == null)
+                continue;
+
+            Bounds meshBounds = meshFilter.sharedMesh.bounds;
+            Matrix4x4 meshToRoot = root.worldToLocalMatrix * meshFilter.transform.localToWorldMatrix;
+            for (int corner = 0; corner < 8; corner++)
+            {
+                Vector3 extentSigns = new Vector3(
+                    (corner & 1) == 0 ? -1f : 1f,
+                    (corner & 2) == 0 ? -1f : 1f,
+                    (corner & 4) == 0 ? -1f : 1f);
+                Vector3 localCorner = meshToRoot.MultiplyPoint3x4(
+                    meshBounds.center + Vector3.Scale(meshBounds.extents, extentSigns));
+
+                if (!hasBounds)
+                {
+                    localBounds = new Bounds(localCorner, Vector3.zero);
+                    hasBounds = true;
+                }
+                else
+                {
+                    localBounds.Encapsulate(localCorner);
+                }
+            }
+        }
+
+        return hasBounds;
+    }
+
+    void FindWallRange()
+    {
+        if (WallBoundsUtility.TryGetPaddedRange(wallsParentName, transform.position, lateralPadding, out minZ, out maxZ))
+            return;
+
+        minZ = -5.0f;
+        maxZ = 10.0f;
     }
 }

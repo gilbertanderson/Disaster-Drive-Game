@@ -16,8 +16,12 @@ public class MoveDown : MonoBehaviour
     [SerializeField] private float destroyFxCameraSafetyScale = 0.85f;
     [SerializeField] private float destroyFxDownOffset = 0.2f;
     [SerializeField] private float destroyFxCameraForwardOffset = 0.15f;
+    [SerializeField] private float destroyFxSimulationSpeed = 2.75f;
+    [SerializeField] private float destroyFxSpeedMultiplier = 2f;
+    [SerializeField] private float destroyFxLifetimeMultiplier = 0.6f;
 
     private Rigidbody objectRb;       // Cached Rigidbody used for physics-based movement
+    private BoxCollider rockCollider;
     private Vector3 moveDirection;    // World-space direction that reads as "down the screen"
     private Vector3 spawnPosition;    // Where this obstacle returns to after passing the bottom
     private Quaternion spawnRotation; // Original orientation, restored after a knock-aside
@@ -25,13 +29,43 @@ public class MoveDown : MonoBehaviour
     private float minZ = float.NegativeInfinity;  // Lower Z limit from the walls (unbounded if unassigned)
     private float maxZ = float.PositiveInfinity;  // Upper Z limit from the walls
     private bool isKnockedAside;      // While true, physics drives the rock instead of the scripted rail
-    private GameManager gameManager;  // Rocks only travel while the game is active
+    private bool hitPlayer;           // True once the vehicle collides with this rock
+    private bool nearMissChecked;     // Near-miss bonus is evaluated at most once per rock
+    private Transform playerTransform;          // Single-player fallback (also used by tests)
+    private PlayerController[] players;         // All vehicles; near-miss goes to whichever is nearest
+    private GameManager gameManager;  // Rocks travel while the world is animating (active run or exit drive)
+    private GroundScroller groundScroller;      // Speed source, so rocks stay in lockstep with the ground/trees
+    [SerializeField] private float groundSpeedMultiplier = 2.25f;  // Same multiplier the decorative trees use
+    [SerializeField] private float nearMissDistance = 2f;  // Lateral (Z) gap that still counts as a close dodge
+
+    public static int ActiveRockCount { get; private set; }
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetActiveRockCount()
+    {
+        ActiveRockCount = 0;
+    }
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
         objectRb = GetComponent<Rigidbody>();
+        rockCollider = GetComponent<BoxCollider>();
+        objectRb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
+        // MovePosition steps at the fixed timestep; without interpolation the rock
+        // visibly judders against the trees/ground, which scroll every rendered frame.
+        // Interpolation only smooths MovePosition on a KINEMATIC body (on a dynamic one
+        // it teleports), and the rail must be kinematic anyway: rocks sit partially
+        // buried in the ground, so a dynamic body's ground contacts fight the rail.
+        // The body switches to dynamic only when the vehicle knocks it aside.
+        objectRb.interpolation = RigidbodyInterpolation.Interpolate;
+        objectRb.isKinematic = true;
         gameManager = FindAnyObjectByType<GameManager>();
+        groundScroller = FindAnyObjectByType<GroundScroller>();
+        RefreshSpeed();
+        players = FindObjectsByType<PlayerController>(FindObjectsSortMode.None);
+        if (players.Length > 0)
+            playerTransform = players[0].transform;
         objectRb.useGravity = false;                          // Movement is script-driven, not gravity
         objectRb.constraints = RigidbodyConstraints.FreezeRotation    // Don't spin on impact
                              | RigidbodyConstraints.FreezePositionY;  // Stay on the ground; a hit only shoves it sideways
@@ -43,46 +77,44 @@ public class MoveDown : MonoBehaviour
         spawnRotation = objectRb.rotation;                    // ...and its upright orientation to restore later
 
         // Figure out which world direction points down the screen on the ground plane.
-        Vector3 screenUp = gameCamera.transform.forward;      // For an angled camera, forward is the screen-up axis
-        screenUp.y = 0f;
-        if (screenUp.sqrMagnitude < 0.001f)                   // Top-down camera looks straight down...
-            screenUp = gameCamera.transform.up;               // ...so "screen up" lives on the camera's up axis
-        screenUp.y = 0f;
-        screenUp.Normalize();
-
-        moveDirection = -screenUp;                            // Down the screen is the opposite of screen up
+        moveDirection = ScreenEdgeUtility.ComputeTravelDirection(gameCamera);
 
         // Project the bottom edge of the screen onto the travel axis so we know when we've gone off-screen.
         bottomThreshold = ScreenEdgeUtility.BottomAlongTravel(gameCamera, transform.position.y, moveDirection) + wrapMargin;
 
         // Cache the Z range between the side walls' inner faces so a sideways
         // collision can't shove the rock out of the play field.
-        GameObject wallsParent = GameObject.Find(wallsParentName);
-        if (wallsParent != null && wallsParent.transform.childCount >= 2)
+        if (WallBoundsUtility.TryGetPaddedRange(wallsParentName, spawnPosition, wallPadding, out float lowZ, out float highZ))
         {
-            float lowZ = float.NegativeInfinity;   // Highest inner face on the low-Z side
-            float highZ = float.PositiveInfinity;  // Lowest inner face on the high-Z side
-
-            foreach (Transform wall in wallsParent.transform)
-            {
-                float halfDepth = wall.localScale.z * 0.5f;
-                if (wall.position.z < spawnPosition.z)              // Wall on the low-Z side of the field
-                    lowZ = Mathf.Max(lowZ, wall.position.z + halfDepth);
-                else                                               // Wall on the high-Z side
-                    highZ = Mathf.Min(highZ, wall.position.z - halfDepth);
-            }
-
-            minZ = lowZ + wallPadding;
-            maxZ = highZ - wallPadding;
+            minZ = lowZ;
+            maxZ = highZ;
         }
+    }
+
+    void OnEnable()
+    {
+        ActiveRockCount++;
+    }
+
+    void OnDisable()
+    {
+        ActiveRockCount = Mathf.Max(0, ActiveRockCount - 1);
     }
 
     // FixedUpdate is the correct place for Rigidbody physics work
     void FixedUpdate()
     {
-        // Hold still until the player presses DRIVE (and freeze again at game over).
-        if (gameManager != null && !gameManager.IsGameActive)
+        // Hold still on the start screen; keep scrolling during the post-game-over exit drive.
+        if (gameManager != null && !gameManager.IsWorldAnimating)
             return;
+
+        TryAwardNearMiss();
+        TryDetectPlayerOverlap();
+
+        // Re-read the ground scroll speed each tick (like TreeScroller does every frame)
+        // so rocks always travel at the same world speed as the ground plane and trees.
+        if (!isKnockedAside)
+            RefreshSpeed();
 
         // While being knocked aside, let physics carry the rock freely so the vehicle
         // can shove it off to the side instead of it stopping dead on its scripted rail —
@@ -102,35 +134,144 @@ public class MoveDown : MonoBehaviour
             return;
         }
 
-        // Move at a constant speed down the screen so collisions are respected,
-        // then clamp Z so a sideways hit can't push the rock past the walls.
+        // Move at a constant speed down the screen (kinematic MovePosition, which
+        // interpolation renders smoothly), clamping Z so a sideways hit can't have
+        // pushed the rock past the walls.
         Vector3 targetPosition = objectRb.position + speed * Time.fixedDeltaTime * moveDirection;
         targetPosition.z = Mathf.Clamp(targetPosition.z, minZ, maxZ);
         objectRb.MovePosition(targetPosition);
+
+        Vector3 settled = objectRb.position;
+        settled.z = Mathf.Clamp(settled.z, minZ, maxZ);
+        if (!Mathf.Approximately(settled.z, objectRb.position.z))
+            objectRb.position = settled;
 
         // Once the obstacle has travelled past the bottom edge (off-screen behind the
         // player), destroy it so the spawner keeps feeding a fresh flow of rocks.
         if (Vector3.Dot(objectRb.position, moveDirection) > bottomThreshold)
         {
-            SpawnDestroyFx();
+            if (!hitPlayer && gameManager != null)
+                gameManager.OnRockDodged();
             Destroy(gameObject);
         }
+    }
+
+    // Rocks without a GroundScroller in the scene (tests, minimal setups) keep
+    // whatever speed was assigned manually or by the spawner.
+    void RefreshSpeed()
+    {
+        if (groundScroller != null)
+            speed = Mathf.Max(1.5f, groundScroller.PropScrollSpeed(groundSpeedMultiplier));
+    }
+
+    void TryAwardNearMiss()
+    {
+        if (nearMissChecked || hitPlayer || gameManager == null || !gameManager.IsGameActive)
+            return;
+
+        // In two-player mode the dodge credit goes to whichever vehicle the rock
+        // passed closest to; with one player this is just that player.
+        PlayerController nearest = NearestActivePlayer(out Transform nearestTransform);
+        if (nearestTransform == null)
+            return;
+
+        float rockAlong = Vector3.Dot(objectRb.position, moveDirection);
+        float playerAlong = Vector3.Dot(nearestTransform.position, moveDirection);
+        if (rockAlong <= playerAlong)
+            return;
+
+        nearMissChecked = true;
+        float lateralGap = Mathf.Abs(objectRb.position.z - nearestTransform.position.z);
+        if (lateralGap <= nearMissDistance)
+            gameManager.OnNearMiss(nearest);
+    }
+
+    PlayerController NearestActivePlayer(out Transform nearestTransform)
+    {
+        PlayerController nearest = null;
+        nearestTransform = null;
+        float bestSqrDistance = float.PositiveInfinity;
+
+        if (players != null)
+        {
+            foreach (var candidate in players)
+            {
+                if (candidate == null || !candidate.gameObject.activeInHierarchy)
+                    continue;
+
+                float sqrDistance = (candidate.transform.position - objectRb.position).sqrMagnitude;
+                if (sqrDistance < bestSqrDistance)
+                {
+                    bestSqrDistance = sqrDistance;
+                    nearest = candidate;
+                    nearestTransform = candidate.transform;
+                }
+            }
+        }
+
+        // Tests (and older setups) assign playerTransform directly without a controller.
+        if (nearestTransform == null)
+            nearestTransform = playerTransform;
+        return nearest;
     }
 
     // When the player vehicle hits this rock, shove it aside for one tick so the impact
     // still reads as physical, then destroy it shortly after (rather than respawning).
     private void OnCollisionEnter(Collision collision)
     {
-        if (isKnockedAside || !collision.gameObject.CompareTag("Player"))
+        if (!collision.gameObject.CompareTag("Player"))
             return;
 
+        Vector3 hitPoint = collision.contactCount > 0
+            ? collision.GetContact(0).point
+            : objectRb.position;
+        RegisterPlayerHit(hitPoint, collision.transform);
+    }
+
+    void TryDetectPlayerOverlap()
+    {
+        if (isKnockedAside || hitPlayer || rockCollider == null || playerTransform == null)
+            return;
+
+        Vector3 worldCenter = transform.TransformPoint(rockCollider.center);
+        Vector3 lossyScale = transform.lossyScale;
+        Vector3 halfExtents = new Vector3(
+            rockCollider.size.x * Mathf.Abs(lossyScale.x),
+            rockCollider.size.y * Mathf.Abs(lossyScale.y),
+            rockCollider.size.z * Mathf.Abs(lossyScale.z)) * 0.5f;
+        var overlaps = Physics.OverlapBox(worldCenter, halfExtents, transform.rotation, ~0, QueryTriggerInteraction.Ignore);
+        foreach (var overlap in overlaps)
+        {
+            if (!overlap.CompareTag("Player"))
+                continue;
+
+            Vector3 hitPoint = overlap.ClosestPoint(worldCenter);
+            RegisterPlayerHit(hitPoint, overlap.transform);
+            return;
+        }
+    }
+
+    public void RegisterPlayerHit(Vector3 hitPoint, Transform player)
+    {
+        if (isKnockedAside || hitPlayer)
+            return;
+
+        hitPlayer = true;
         isKnockedAside = true;
+        objectRb.isKinematic = false;   // Rail is kinematic; hand the rock to physics for the shove
         objectRb.constraints = RigidbodyConstraints.FreezeRotation
                              | RigidbodyConstraints.FreezePositionY;
 
+        if (gameManager != null)
+        {
+            // Charge the penalty to whichever player's vehicle took the hit.
+            var hitController = player != null ? player.GetComponentInParent<PlayerController>() : null;
+            gameManager.OnPlayerHit(hitPoint, hitController);
+        }
+
         // Push toward whichever side of the vehicle the rock is on, so it "falls" to
         // that side, while keeping its downward speed so it never simply stops.
-        float side = objectRb.position.z >= collision.transform.position.z ? 1f : -1f;
+        float side = objectRb.position.z >= player.position.z ? 1f : -1f;
         objectRb.linearVelocity = moveDirection * speed + Vector3.forward * (side * knockAsideSpeed);
 
         Invoke(nameof(DestroyRock), 0.01f);
@@ -142,8 +283,7 @@ public class MoveDown : MonoBehaviour
         Destroy(gameObject);
     }
 
-    // Rubble burst + crush sound, scaled down to roughly this rock's own footprint so the
-    // effect doesn't dwarf a small rock (used both off-screen and on player-hit destruction).
+    // Rubble burst + crush sound on player-hit destruction, scaled to this rock's footprint.
     private void SpawnDestroyFx()
     {
         if (crushClip != null)
@@ -163,7 +303,35 @@ public class MoveDown : MonoBehaviour
             float rockScaleFactor = Mathf.Clamp(transform.localScale.x, 0.3f, 1f);
             float finalScale = rockScaleFactor * destroyFxScaleMultiplier * destroyFxCameraSafetyScale;
             fx.transform.localScale *= finalScale;
-            Destroy(fx, 2.5f);
+            BoostDestroyParticles(fx);
+            Destroy(fx, 1.5f);
         }
+    }
+
+    static void BoostDestroyParticles(GameObject fx, float simulationSpeed, float speedMultiplier, float lifetimeMultiplier)
+    {
+        foreach (var ps in fx.GetComponentsInChildren<ParticleSystem>(true))
+        {
+            var main = ps.main;
+            main.simulationSpeed = simulationSpeed;
+            main.startDelay = 0f;
+
+            var lifetime = main.startLifetime;
+            lifetime.constant *= lifetimeMultiplier;
+            lifetime.constantMin *= lifetimeMultiplier;
+            lifetime.constantMax *= lifetimeMultiplier;
+            main.startLifetime = lifetime;
+
+            var startSpeed = main.startSpeed;
+            startSpeed.constant *= speedMultiplier;
+            startSpeed.constantMin *= speedMultiplier;
+            startSpeed.constantMax *= speedMultiplier;
+            main.startSpeed = startSpeed;
+        }
+    }
+
+    void BoostDestroyParticles(GameObject fx)
+    {
+        BoostDestroyParticles(fx, destroyFxSimulationSpeed, destroyFxSpeedMultiplier, destroyFxLifetimeMultiplier);
     }
 }
