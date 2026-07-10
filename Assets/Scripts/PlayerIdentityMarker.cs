@@ -9,6 +9,7 @@ public class PlayerIdentityMarker : MonoBehaviour
     [SerializeField] private float ringThickness = 0.08f;
 
     private GameManager gameManager;
+    private VehicleSelector vehicleSelector;
     private Transform markerRoot;
     private int playerIndex;
 
@@ -17,6 +18,8 @@ public class PlayerIdentityMarker : MonoBehaviour
         var owner = GetComponentInParent<PlayerController>();
         if (owner != null)
             playerIndex = owner.playerIndex;
+
+        vehicleSelector = GetComponentInParent<VehicleSelector>();
 
         BuildVisuals();
     }
@@ -81,6 +84,9 @@ public class PlayerIdentityMarker : MonoBehaviour
             return;
 
         bool show = gameManager != null && gameManager.IsTwoPlayerMode && gameManager.IsGameActive;
+        if (show && vehicleSelector != null
+            && vehicleSelector.CurrentVehicleDisplayName == "Convertible")
+            show = false;
         markerRoot.gameObject.SetActive(show);
     }
 }

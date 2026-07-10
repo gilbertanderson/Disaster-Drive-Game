@@ -7,7 +7,6 @@ public class GameplayCameraDirectorTests
     private GameObject cameraObject;
     private GameObject rigObject;
     private GameObject frontAnchorObject;
-    private GameObject behindAnchorObject;
     private CameraShake cameraShake;
     private GameplayCameraDirector director;
 
@@ -21,16 +20,13 @@ public class GameplayCameraDirectorTests
 
         rigObject = new GameObject("IntroCameraRig");
         frontAnchorObject = CreateAnchor("IntroCameraFront", rigObject.transform,
-            new Vector3(-6f, 6f, -1f), Quaternion.Euler(35f, 0f, 0f));
-        behindAnchorObject = CreateAnchor("IntroCameraBehind", rigObject.transform,
-            new Vector3(0f, 6f, 8f), Quaternion.Euler(35f, 180f, 0f));
+            new Vector3(11.5f, 2.6f, 0f), Quaternion.Euler(10f, 270f, 0f));
 
         cameraShake = cameraObject.AddComponent<CameraShake>();
         director = cameraObject.AddComponent<GameplayCameraDirector>();
 
         SetPrivateField(director, "introRig", rigObject.transform);
         SetPrivateField(director, "frontAnchor", frontAnchorObject.transform);
-        SetPrivateField(director, "behindAnchor", behindAnchorObject.transform);
         SetPrivateField(director, "cameraShake", cameraShake);
         SetPrivateField(director, "beatDuration", 0.8f);
 
@@ -55,18 +51,25 @@ public class GameplayCameraDirectorTests
     }
 
     [Test]
-    public void PlayIntroSequence_ProgressesThroughBeatAnchors()
+    public void StartIntroSequence_CutsStraightToFrontShot()
     {
         director.StartIntroSequence(null);
 
-        AdvanceBeat(0);
-        Assert.That(Vector3.Distance(cameraObject.transform.position, frontAnchorObject.transform.position), Is.LessThan(0.1f));
+        Assert.That(Vector3.Distance(cameraObject.transform.position, frontAnchorObject.transform.position), Is.LessThan(0.001f));
+        Assert.That(Quaternion.Angle(cameraObject.transform.rotation, frontAnchorObject.transform.rotation), Is.LessThan(0.1f));
+    }
 
-        AdvanceBeat(1);
-        Assert.That(Vector3.Distance(cameraObject.transform.position, frontAnchorObject.transform.position), Is.LessThan(0.1f));
+    [Test]
+    public void PlayIntroSequence_HoldsFrontShotThroughCountdown()
+    {
+        director.StartIntroSequence(null);
 
-        AdvanceBeat(2);
-        Assert.That(Vector3.Distance(cameraObject.transform.position, behindAnchorObject.transform.position), Is.LessThan(0.1f));
+        for (int beat = 0; beat <= 2; beat++)
+        {
+            AdvanceBeat(beat);
+            Assert.That(Vector3.Distance(cameraObject.transform.position, frontAnchorObject.transform.position), Is.LessThan(0.1f),
+                $"Camera should hold the front shot during beat {beat}.");
+        }
     }
 
     [Test]

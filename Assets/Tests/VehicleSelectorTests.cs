@@ -82,6 +82,21 @@ public class VehicleSelectorTests
     }
 
     [Test]
+    public void Awake_DisablesCameraRigsEmbeddedInVehicleVisuals()
+    {
+        // Mirrors the armored truck prefab, which ships with its own chase camera child.
+        var rig = new GameObject("Main Camera");
+        rig.transform.parent = vehicleVisual.transform;
+        var camera = rig.AddComponent<Camera>();
+        var listener = rig.AddComponent<AudioListener>();
+
+        InvokePrivateMethod("Awake");
+
+        Assert.IsFalse(camera.enabled, "Embedded vehicle cameras must not override the top-down gameplay camera.");
+        Assert.IsFalse(listener.enabled, "Embedded audio listeners would conflict with the gameplay camera's listener.");
+    }
+
+    [Test]
     public void Apply_PlacesEmitterBehindTheSelectedVehicleOnly()
     {
         PlayerPrefs.SetInt("VehicleIndex", 1);
@@ -165,7 +180,7 @@ public class VehicleSelectorTests
         Assert.That(VehicleSelector.FormatVehicleName("SM_Veh_Convertable_01"), Is.EqualTo("Convertible"));
         Assert.That(VehicleSelector.FormatVehicleName("Prefab_K-131"), Is.EqualTo("Jeep"));
         Assert.That(VehicleSelector.FormatVehicleName("Off-road vehicle"), Is.EqualTo("Humvee"));
-        Assert.That(VehicleSelector.FormatVehicleName("SURVIVAL ARMORED TRUCK 1"), Is.EqualTo("Armored Truck"));
+        Assert.That(VehicleSelector.FormatVehicleName("SURVIVAL ARMORED TRUCK 1"), Is.EqualTo("Armored Car"));
     }
 
     [Test]

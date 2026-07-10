@@ -10,7 +10,7 @@ using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 
 /// <summary>
-/// Play Mode end-to-end tests mapped to PROJECT_4_RUBRIC.md pre-submit checklist.
+/// Play Mode end-to-end tests mapped to PROJECT_RUBRIC.md pre-submit checklist.
 /// Run with video: Disaster → Run Rubric E2E with Video (or PlayMode tab in Test Runner).
 /// </summary>
 public class RubricE2ETests
@@ -36,7 +36,7 @@ public class RubricE2ETests
         yield return new WaitForSeconds(0.5f);
     }
 
-    // --- Criterion 1: Gameplay (PROJECT_4_RUBRIC pre-submit) ---
+    // --- Criterion 1: Gameplay (PROJECT_RUBRIC pre-submit) ---
 
     [UnityTest]
     public IEnumerator Rubric_01_StartScreen_ShowsDisasterTitle()

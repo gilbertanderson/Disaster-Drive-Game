@@ -180,8 +180,13 @@ public class PlayerController : MonoBehaviour
                 .With("Left", "<Keyboard>/leftArrow")
                 .With("Right", "<Keyboard>/rightArrow");
         }
-        if (scheme == ControlScheme.ArrowsAndGamepad)
+        // Single player gets the gamepad too (Steam Deck / controller / on-screen
+        // stick); in two-player mode the pad belongs to P2 only.
+        if (scheme == ControlScheme.ArrowsAndGamepad || scheme == ControlScheme.WasdAndArrows)
+        {
             action.AddBinding("<Gamepad>/leftStick");
+            action.AddBinding("<Gamepad>/dpad");
+        }
         return action;
     }
 

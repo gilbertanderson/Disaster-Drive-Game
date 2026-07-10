@@ -125,10 +125,76 @@ public class WallScrollerTests
 
         typeof(WallScroller).GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
             .Invoke(scroller, null);
+        typeof(WallScroller).GetMethod("LateUpdate", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+            .Invoke(scroller, null);
 
         // Recycled: should now sit directly behind (ahead of, along -moveDir) the partner tile.
         float expectedX = partnerObject.transform.position.x + 32.78541f;
         Assert.That(segment.transform.position.x, Is.EqualTo(expectedX).Within(0.01f));
+
+        Object.DestroyImmediate(cameraObject);
+        Object.DestroyImmediate(partnerObject);
+        Object.DestroyImmediate(spawnManagerObject);
+        Object.DestroyImmediate(grassObject);
+        Object.DestroyImmediate(segment);
+    }
+
+    [Test]
+    public void Recycle_WaitsForLateUpdate_SoPartnerPositionIsFinalForTheFrame()
+    {
+        // Leapfrog placement reads the partner tile's live position, but Update order
+        // between the two tiles in a lane is unspecified. Recycling during Update could
+        // therefore run before the partner's own move for the frame, placing the tile
+        // against a stale position and leaving a one-frame-of-travel gap at the seam.
+        // Recycling belongs in LateUpdate, after every tile has moved.
+        var segment = new GameObject("WallTile");
+        segment.transform.position = new Vector3(-20f, 0f, 11.5f); // already past bottom-of-screen
+
+        var grassObject = CreateGrassObject();
+        var grassScroller = grassObject.AddComponent<GroundScroller>();
+        SetPrivateField(grassScroller, "scrollDirection", new Vector2(-1f, 0f));
+
+        var cameraObject = new GameObject("Cam");
+        var camera = cameraObject.AddComponent<Camera>();
+        camera.transform.position = new Vector3(0f, 16f, 2.5f);
+        camera.transform.eulerAngles = new Vector3(90f, 90f, 0f);
+
+        var scroller = segment.AddComponent<WallScroller>();
+        SetPrivateField(scroller, "tileLength", 32.78541f);
+        scroller.gameCamera = camera;
+        scroller.Configure(grassScroller);
+
+        var spawnManagerObject = new GameObject("WallSpawnManager");
+        var spawnManager = spawnManagerObject.AddComponent<WallSpawnManager>();
+        SetPrivateField(spawnManager, "grassScroller", grassScroller);
+
+        var partnerObject = new GameObject("PartnerTile");
+        partnerObject.transform.position = new Vector3(20f, 0f, 11.5f);
+        var partnerScroller = partnerObject.AddComponent<WallScroller>();
+        SetPrivateField(partnerScroller, "tileLength", 32.78541f);
+
+        var pairs = new System.Collections.Generic.List<(WallScroller, WallScroller)> { (scroller, partnerScroller) };
+        SetPrivateField(spawnManager, "lanePairs", pairs);
+
+        SetPrivateField(scroller, "spawnManager", spawnManager);
+        typeof(WallScroller).GetMethod("UpdateBottomThreshold", BindingFlags.Instance | BindingFlags.NonPublic)
+            .Invoke(scroller, null);
+
+        // Update alone must not recycle, even though the tile is past the threshold.
+        typeof(WallScroller).GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+            .Invoke(scroller, null);
+        Assert.That(segment.transform.position.x, Is.LessThan(0f),
+            "Tile recycled during Update; recycling must wait for LateUpdate.");
+
+        // The partner's own Update move lands after the exiting tile's Update.
+        partnerObject.transform.position += new Vector3(-0.5f, 0f, 0f);
+
+        typeof(WallScroller).GetMethod("LateUpdate", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+            .Invoke(scroller, null);
+
+        // Seam must be exact against the partner's final position for the frame.
+        float expectedX = partnerObject.transform.position.x + 32.78541f;
+        Assert.That(segment.transform.position.x, Is.EqualTo(expectedX).Within(0.001f));
 
         Object.DestroyImmediate(cameraObject);
         Object.DestroyImmediate(partnerObject);

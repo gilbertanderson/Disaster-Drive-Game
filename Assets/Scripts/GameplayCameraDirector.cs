@@ -1,12 +1,12 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-// Drives the start-of-run intro camera: beat-synced cinematic shots during 3-2-1-GO, then top-down gameplay.
+// Drives the start-of-run intro camera: a head-on shot of the vehicles held through
+// 3-2-1, then a swoop up to the top-down gameplay pose on GO.
 public class GameplayCameraDirector : MonoBehaviour
 {
     [SerializeField] private Transform introRig;
     [SerializeField] private Transform frontAnchor;
-    [SerializeField] private Transform behindAnchor;
     [SerializeField] private CameraShake cameraShake;
     [SerializeField] private float beatDuration = 0.8f;
 
@@ -55,6 +55,10 @@ public class GameplayCameraDirector : MonoBehaviour
         currentBeat = -1;
         beatInProgress = false;
         beatElapsed = 0f;
+
+        // Open on the front shot with a hard cut so the countdown never pans across the track.
+        if (introActive)
+            transform.SetPositionAndRotation(frontAnchor.position, frontAnchor.rotation);
     }
 
     public void PlayCountdownBeat(int beatIndex)
@@ -107,7 +111,7 @@ public class GameplayCameraDirector : MonoBehaviour
 
     bool HasValidAnchors()
     {
-        return introRig != null && frontAnchor != null && behindAnchor != null;
+        return introRig != null && frontAnchor != null;
     }
 
     void PositionRigAtFocalPoint(IReadOnlyList<Transform> vehicleRoots)
@@ -135,21 +139,16 @@ public class GameplayCameraDirector : MonoBehaviour
 
     void GetBeatTargetPose(int beatIndex, out Vector3 position, out Quaternion rotation)
     {
-        switch (beatIndex)
+        // Beats 0-2 (3, 2, 1) hold the head-on front shot; beat 3 (GO) swoops to gameplay.
+        if (beatIndex < 3)
         {
-            case 0:
-            case 1:
-                position = frontAnchor.position;
-                rotation = frontAnchor.rotation;
-                break;
-            case 2:
-                position = behindAnchor.position;
-                rotation = behindAnchor.rotation;
-                break;
-            default:
-                position = gameplayPosition;
-                rotation = gameplayRotation;
-                break;
+            position = frontAnchor.position;
+            rotation = frontAnchor.rotation;
+        }
+        else
+        {
+            position = gameplayPosition;
+            rotation = gameplayRotation;
         }
     }
 

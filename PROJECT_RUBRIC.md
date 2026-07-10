@@ -96,7 +96,7 @@ Design doc listed particles as optional / “none.” Project 4 rubric still gra
 
 | Required file | Status | Action |
 |---------------|--------|--------|
-| **Project Reflection** | Done | [`PROJECT_4_REFLECTION.md`](PROJECT_4_REFLECTION.md) |
+| **Project Reflection** | Done | [`PROJECT_REFLECTION.md`](PROJECT_REFLECTION.md) |
 | **Unity Package** | **Missing** | Export from Editor — **required or zero grade** |
 | **Build folder** | **Missing** | File → Build Profiles → Build (macOS or Windows) |
 
@@ -137,4 +137,4 @@ Design doc listed particles as optional / “none.” Project 4 rubric still gra
 - [ ] Create `DESIGN_DEVIATIONS.md` (or add section to reflection)
 - [ ] Export `.unitypackage`
 - [ ] Produce build folder and test the standalone player
-- [ ] Upload: package + build + `PROJECT_4_REFLECTION.md` (or paste into LMS)
+- [ ] Upload: package + build + `PROJECT_REFLECTION.md` (or paste into LMS)

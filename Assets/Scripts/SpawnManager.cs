@@ -174,23 +174,38 @@ public class SpawnManager : MonoBehaviour
         }
     }
 
+    // Three fixed lanes (left / middle / right) instead of a fully continuous
+    // range, so every rock has a clear gap on at least one side to dodge into.
+    const int LaneCount = 3;
+
+    float PickLaneZ(float low, float high)
+    {
+        float laneWidth = (high - low) / LaneCount;
+        int lane = Random.Range(0, LaneCount);
+        float laneLow = low + laneWidth * lane;
+        float laneJitterPad = laneWidth * 0.15f;  // keep spawns away from lane edges so lanes read as distinct
+        return Random.Range(laneLow + laneJitterPad, laneLow + laneWidth - laneJitterPad);
+    }
+
     float PickSpawnZ()
     {
         if (gameManager != null && gameManager.IsTwoPlayerMode)
         {
             float midZ = (minZ + maxZ) * 0.5f;
-            float z = spawnOnHighSide ? Random.Range(midZ, maxZ) : Random.Range(minZ, midZ);
+            float low = spawnOnHighSide ? midZ : minZ;
+            float high = spawnOnHighSide ? maxZ : midZ;
             spawnOnHighSide = !spawnOnHighSide;
-            return z;
+            return PickLaneZ(low, high);
         }
 
-        return Random.Range(minZ, maxZ);
+        return PickLaneZ(minZ, maxZ);
     }
 
     void SpawnObstacleInternal()
     {
         float sizeMultiplier = Random.Range(rockScaleRange.x, rockScaleRange.y);
         float randomZ = PickSpawnZ();
+        CacheSpawnX();  // Recompute fresh every spawn so a stale camera/aspect snapshot can never place a rock on-screen.
         Vector3 spawnPos = new Vector3(spawnX, cachedGroundLevelY, randomZ);
 
         GameObject rock;
@@ -220,7 +235,7 @@ public class SpawnManager : MonoBehaviour
         if (visual != null)
         {
             AlignVisualToGround(visual, rock);
-            FitSphereColliderToVisual(rock, visual);
+            FitBoxColliderToVisual(rock, visual);
         }
 
         ConfigureRockShadows(rock);
@@ -252,8 +267,14 @@ public class SpawnManager : MonoBehaviour
                 Destroy(child);
         }
 
+        // Yaw the SHELL, not the visual: the BoxCollider is axis-aligned to the
+        // shell, so a yawed visual inside an unrotated shell forces an inflated
+        // axis-aligned box (up to ~40% per axis for elongated rocks) — cars were
+        // "hitting" rocks they only drove near. Rotating the shell keeps the box
+        // hugging the mesh; rock motion is positional so gameplay is unaffected.
         Vector3 prefabLocalPos = visual.transform.localPosition;
-        visual.transform.localRotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+        rock.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f) * rock.transform.rotation;
+        visual.transform.localRotation = Quaternion.identity;
         visual.transform.localPosition = prefabLocalPos;
 
         foreach (var childCollider in visual.GetComponentsInChildren<Collider>())
@@ -614,12 +635,26 @@ public class SpawnManager : MonoBehaviour
         }
     }
 
-    void FitSphereColliderToVisual(GameObject rock, GameObject visual)
+    // Fits the box in the ROCK'S LOCAL SPACE by transforming each mesh's corners,
+    // not by wrapping world-space renderer AABBs: the visual gets a random Y
+    // rotation at spawn, and a world AABB of a rotated elongated rock inflates up
+    // to ~40% per axis — cars were "hitting" rocks they only drove close to.
+    void FitBoxColliderToVisual(GameObject rock, GameObject visual)
     {
-        var collider = rock.GetComponent<SphereCollider>();
+        var collider = rock.GetComponent<BoxCollider>();
         if (collider == null)
             return;
 
+        const float fitPadding = 1.02f;  // small margin so the box safely encloses the mesh
+
+        if (TryGetLocalMeshBounds(rock.transform, visual, out Bounds localBounds))
+        {
+            collider.center = localBounds.center;
+            collider.size = localBounds.size * fitPadding;
+            return;
+        }
+
+        // Fallback (no readable meshes, e.g. skinned-only visuals): world AABB fit.
         var renderers = visual.GetComponentsInChildren<Renderer>();
         if (renderers.Length == 0)
             return;
@@ -628,11 +663,55 @@ public class SpawnManager : MonoBehaviour
         for (int i = 1; i < renderers.Length; i++)
             bounds.Encapsulate(renderers[i].bounds);
 
+        Vector3 lossyScale = rock.transform.lossyScale;
+        Vector3 safeScale = new Vector3(
+            Mathf.Max(Mathf.Abs(lossyScale.x), 0.0001f),
+            Mathf.Max(Mathf.Abs(lossyScale.y), 0.0001f),
+            Mathf.Max(Mathf.Abs(lossyScale.z), 0.0001f));
+
         collider.center = rock.transform.InverseTransformPoint(bounds.center);
-        // Enclose the full AABB (max extent alone misses corners on elongated rocks).
-        float enclosingRadius = bounds.extents.magnitude * 1.08f;
-        float uniformScale = Mathf.Max(rock.transform.lossyScale.x, 0.001f);
-        collider.radius = enclosingRadius / uniformScale;
+        collider.size = new Vector3(
+            bounds.size.x / safeScale.x,
+            bounds.size.y / safeScale.y,
+            bounds.size.z / safeScale.z) * fitPadding;
+    }
+
+    // Encapsulates every mesh corner under `visual`, expressed in `root`'s local
+    // space, so the box tracks the visual's own rotation instead of the world axes.
+    static bool TryGetLocalMeshBounds(Transform root, GameObject visual, out Bounds localBounds)
+    {
+        localBounds = default;
+        bool hasBounds = false;
+
+        foreach (var meshFilter in visual.GetComponentsInChildren<MeshFilter>())
+        {
+            if (meshFilter.sharedMesh == null)
+                continue;
+
+            Bounds meshBounds = meshFilter.sharedMesh.bounds;
+            Matrix4x4 meshToRoot = root.worldToLocalMatrix * meshFilter.transform.localToWorldMatrix;
+            for (int corner = 0; corner < 8; corner++)
+            {
+                Vector3 extentSigns = new Vector3(
+                    (corner & 1) == 0 ? -1f : 1f,
+                    (corner & 2) == 0 ? -1f : 1f,
+                    (corner & 4) == 0 ? -1f : 1f);
+                Vector3 localCorner = meshToRoot.MultiplyPoint3x4(
+                    meshBounds.center + Vector3.Scale(meshBounds.extents, extentSigns));
+
+                if (!hasBounds)
+                {
+                    localBounds = new Bounds(localCorner, Vector3.zero);
+                    hasBounds = true;
+                }
+                else
+                {
+                    localBounds.Encapsulate(localCorner);
+                }
+            }
+        }
+
+        return hasBounds;
     }
 
     void FindWallRange()

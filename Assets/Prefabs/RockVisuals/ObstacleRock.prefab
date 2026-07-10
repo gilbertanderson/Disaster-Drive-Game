@@ -34,8 +34,8 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!135 &199583521329634881
-SphereCollider:
+--- !u!65 &199583521329634881
+BoxCollider:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
@@ -53,7 +53,7 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 0.9721787
+  m_Size: {x: 1.9443574, y: 1.9443574, z: 1.9443574}
   m_Center: {x: -0.9388424, y: 0.17826249, z: -0.22835304}
 --- !u!54 &2041952355456002561
 Rigidbody:
@@ -79,7 +79,7 @@ Rigidbody:
   m_ImplicitTensor: 1
   m_UseGravity: 1
   m_IsKinematic: 0
-  m_Interpolate: 0
+  m_Interpolate: 1
   m_Constraints: 0
   m_CollisionDetection: 3
 --- !u!114 &8891052208422973444
