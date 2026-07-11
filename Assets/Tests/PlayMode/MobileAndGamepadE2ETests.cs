@@ -1,6 +1,5 @@
 using System.Collections;
 using System.Collections.Generic;
-using System.Reflection;
 using NUnit.Framework;
 using TMPro;
 using UnityEngine;
@@ -8,6 +7,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using UnityEngine.UI;
+using static PlayModeReflectionHelpers;
 
 /// <summary>
 /// Play Mode end-to-end tests for gamepad and mobile (touch) input, driving the
@@ -18,18 +18,27 @@ using UnityEngine.UI;
 public class MobileAndGamepadE2ETests : InputTestFixture
 {
     const string MainScene = "My Game";
+    const string PlayerCountKey = "PlayerCount";
     const float WaitTimeout = 2f;
+    // StartGame runs a 3-2-1-GO countdown (4 x 0.8s beats) plus a camera intro
+    // before IsGameActive flips, so "the run started" needs a generous ceiling.
+    const float RunStartTimeout = 15f;
 
     GameManager gameManager;
     PlayerController player;
     Gamepad gamepad;
+    bool hadPlayerCountKey;
+    int savedPlayerCount;
 
     [UnitySetUp]
     public IEnumerator LoadMainScene()
     {
         // Single-player is the mode whose control scheme includes the gamepad
-        // bindings; make sure a stale 2P preference can't leak into these tests.
-        PlayerPrefs.SetInt("PlayerCount", 1);
+        // bindings; force it for the test, but put the player's own 1P/2P
+        // preference back afterwards (see RestoreState).
+        hadPlayerCountKey = PlayerPrefs.HasKey(PlayerCountKey);
+        savedPlayerCount = PlayerPrefs.GetInt(PlayerCountKey, 1);
+        PlayerPrefs.SetInt(PlayerCountKey, 1);
 
         yield return SceneManager.LoadSceneAsync(MainScene, LoadSceneMode.Single);
         yield return new WaitUntil(() => SceneManager.GetActiveScene().name == MainScene);
@@ -56,6 +65,11 @@ public class MobileAndGamepadE2ETests : InputTestFixture
     {
         Time.timeScale = 1f;
         ResetInputModeState();
+
+        if (hadPlayerCountKey)
+            PlayerPrefs.SetInt(PlayerCountKey, savedPlayerCount);
+        else
+            PlayerPrefs.DeleteKey(PlayerCountKey);
     }
 
     // InputModeWatcher and MobileControlsUI are DontDestroyOnLoad singletons
@@ -64,16 +78,23 @@ public class MobileAndGamepadE2ETests : InputTestFixture
     // alone — the live GameManager's controls-hint handler is registered there.
     static void ResetInputModeState()
     {
-        typeof(InputModeWatcher)
-            .GetProperty("Mode", BindingFlags.Static | BindingFlags.Public)
-            .SetValue(null, InputMode.Keyboard);
-        ((HashSet<InputDevice>)typeof(InputModeWatcher)
-            .GetField("ignoredDevices", BindingFlags.Static | BindingFlags.NonPublic)
-            .GetValue(null)).Clear();
+        SetStaticProperty(typeof(InputModeWatcher), "Mode", InputMode.Keyboard);
+        GetPrivateStaticField<HashSet<InputDevice>>(typeof(InputModeWatcher), "ignoredDevices").Clear();
 
+        // Hide the on-screen controls while this test's input system still
+        // exists, so the stick removes its virtual gamepad cleanly before
+        // InputTestFixture restores the previous input state.
         var mobileControls = Object.FindAnyObjectByType<MobileControlsUI>();
         if (mobileControls != null)
-            SetPrivateField(mobileControls, "stickDeviceIgnored", false);
+            InvokePrivate(mobileControls, "SetShown", false);
+    }
+
+    IEnumerator StartRunAndWaitUntilActive()
+    {
+        gameManager.StartGame();
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => gameManager.IsGameActive, RunStartTimeout);
+        Assert.That(gameManager.IsGameActive, Is.True,
+            "Run should become active once the start countdown and camera intro finish.");
     }
 
     // --- Gamepad ---
@@ -81,8 +102,7 @@ public class MobileAndGamepadE2ETests : InputTestFixture
     [UnityTest]
     public IEnumerator Gamepad_LeftStick_MovesVehicle()
     {
-        gameManager.StartGame();
-        yield return new WaitForSeconds(0.3f);
+        yield return StartRunAndWaitUntilActive();
 
         Vector3 startPos = player.transform.position;
         yield return InputSimulationHelpers.HoldStick(this, gamepad.leftStick, Vector2.right, 0.8f);
@@ -94,8 +114,7 @@ public class MobileAndGamepadE2ETests : InputTestFixture
     [UnityTest]
     public IEnumerator Gamepad_Dpad_MovesVehicle()
     {
-        gameManager.StartGame();
-        yield return new WaitForSeconds(0.3f);
+        yield return StartRunAndWaitUntilActive();
 
         Vector3 startPos = player.transform.position;
         yield return InputSimulationHelpers.HoldButton(this, gamepad.dpad.left, 0.8f);
@@ -107,8 +126,7 @@ public class MobileAndGamepadE2ETests : InputTestFixture
     [UnityTest]
     public IEnumerator Gamepad_StartButton_TogglesPauseAndResume()
     {
-        gameManager.StartGame();
-        yield return new WaitForSeconds(0.3f);
+        yield return StartRunAndWaitUntilActive();
 
         Press(gamepad.startButton, queueEventOnly: true);
         yield return null;
@@ -153,8 +171,7 @@ public class MobileAndGamepadE2ETests : InputTestFixture
     [UnityTest]
     public IEnumerator TouchTap_SwitchesToTouchMode_AndShowsMobileControls()
     {
-        gameManager.StartGame();
-        yield return new WaitForSeconds(0.3f);
+        yield return StartRunAndWaitUntilActive();
 
         yield return InputSimulationHelpers.Tap(this, ScreenCenter());
 
@@ -166,7 +183,7 @@ public class MobileAndGamepadE2ETests : InputTestFixture
 
         var stickRoot = GetPrivateField<GameObject>(mobileControls, "stickRoot");
         var pauseRoot = GetPrivateField<GameObject>(mobileControls, "pauseRoot");
-        yield return WaitUntilOrTimeout(() => stickRoot.activeInHierarchy);
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => stickRoot.activeInHierarchy, WaitTimeout);
 
         Assert.That(stickRoot.activeInHierarchy, Is.True,
             "The on-screen stick should appear in Touch mode during an active run.");
@@ -177,8 +194,7 @@ public class MobileAndGamepadE2ETests : InputTestFixture
     [UnityTest]
     public IEnumerator MobileControls_Hidden_InKeyboardMode()
     {
-        gameManager.StartGame();
-        yield return new WaitForSeconds(0.3f);
+        yield return StartRunAndWaitUntilActive();
 
         var keyboard = Keyboard.current ?? InputSystem.AddDevice<Keyboard>();
         Press(keyboard.spaceKey, queueEventOnly: true);
@@ -198,20 +214,20 @@ public class MobileAndGamepadE2ETests : InputTestFixture
     [UnityTest]
     public IEnumerator VirtualStick_DrivesVehicle_AndModeStaysTouch()
     {
-        gameManager.StartGame();
-        yield return new WaitForSeconds(0.3f);
+        yield return StartRunAndWaitUntilActive();
 
         yield return InputSimulationHelpers.Tap(this, ScreenCenter());
 
         var mobileControls = Object.FindAnyObjectByType<MobileControlsUI>();
         var stickRoot = GetPrivateField<GameObject>(mobileControls, "stickRoot");
-        yield return WaitUntilOrTimeout(() => stickRoot.activeInHierarchy);
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => stickRoot.activeInHierarchy, WaitTimeout);
         Assert.That(stickRoot.activeInHierarchy, Is.True);
 
         // The stick's virtual gamepad device is created when the stick becomes
         // visible; wait until MobileControlsUI has registered it as ignored so
         // the drag below can't be misread as real gamepad input.
-        yield return WaitUntilOrTimeout(() => GetPrivateField<bool>(mobileControls, "stickDeviceIgnored"));
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(
+            () => GetPrivateField<bool>(mobileControls, "stickDeviceIgnored"), WaitTimeout);
         Assert.That(GetPrivateField<bool>(mobileControls, "stickDeviceIgnored"), Is.True,
             "MobileControlsUI should register the stick's virtual device with InputModeWatcher.");
 
@@ -228,14 +244,13 @@ public class MobileAndGamepadE2ETests : InputTestFixture
     [UnityTest]
     public IEnumerator MobilePauseButton_TogglesPause_AndStaysReachableWhilePaused()
     {
-        gameManager.StartGame();
-        yield return new WaitForSeconds(0.3f);
+        yield return StartRunAndWaitUntilActive();
 
         yield return InputSimulationHelpers.Tap(this, ScreenCenter());
 
         var mobileControls = Object.FindAnyObjectByType<MobileControlsUI>();
         var pauseRoot = GetPrivateField<GameObject>(mobileControls, "pauseRoot");
-        yield return WaitUntilOrTimeout(() => pauseRoot.activeInHierarchy);
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => pauseRoot.activeInHierarchy, WaitTimeout);
         Assert.That(pauseRoot.activeInHierarchy, Is.True);
 
         var pauseButton = pauseRoot.GetComponent<Button>();
@@ -259,24 +274,5 @@ public class MobileAndGamepadE2ETests : InputTestFixture
     static Vector2 ScreenCenter()
     {
         return new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
-    }
-
-    static IEnumerator WaitUntilOrTimeout(System.Func<bool> condition)
-    {
-        float deadline = Time.realtimeSinceStartup + WaitTimeout;
-        while (!condition() && Time.realtimeSinceStartup < deadline)
-            yield return null;
-    }
-
-    static T GetPrivateField<T>(object target, string name)
-    {
-        var field = target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
-        return field != null ? (T)field.GetValue(target) : default;
-    }
-
-    static void SetPrivateField(object target, string name, object value)
-    {
-        var field = target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
-        field?.SetValue(target, value);
     }
 }
