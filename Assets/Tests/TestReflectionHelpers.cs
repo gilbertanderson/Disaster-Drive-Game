@@ -46,6 +46,28 @@ internal static class TestReflectionHelpers
         return (T)property.GetValue(target);
     }
 
+    public static T GetPrivateStaticField<T>(System.Type type, string fieldName)
+    {
+        var field = type.GetField(fieldName, BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.IsNotNull(field, $"Could not find private static field '{fieldName}' on {type}.");
+        return (T)field.GetValue(null);
+    }
+
+    public static void SetPrivateStaticField(System.Type type, string fieldName, object value)
+    {
+        var field = type.GetField(fieldName, BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.IsNotNull(field, $"Could not find private static field '{fieldName}' on {type}.");
+        field.SetValue(null, value);
+    }
+
+    public static void SetStaticProperty(System.Type type, string propertyName, object value)
+    {
+        var property = type.GetProperty(propertyName,
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.IsNotNull(property, $"Could not find static property '{propertyName}' on {type}.");
+        property.SetValue(null, value);
+    }
+
     public static GameObject CreateGrassObject(Vector3 position = default)
     {
         var grassObject = new GameObject("GrassObject");

@@ -46,7 +46,7 @@ Submit all three items required by the rubric:
 Optional supporting docs: [`DESIGN_DEVIATIONS.md`](DESIGN_DEVIATIONS.md), [`PROJECT_RUBRIC.md`](PROJECT_RUBRIC.md).
 
 ## Running Tests
-Edit Mode tests live in `Assets/Tests/` (**25+ tests** across 4 files).
+Edit Mode tests live in `Assets/Tests/`.
 
 1. Open **Window → General → Test Runner**.
 2. Select the **EditMode** tab.
@@ -55,8 +55,17 @@ Edit Mode tests live in `Assets/Tests/` (**25+ tests** across 4 files).
    - `VehicleExitTests`
    - `GameManagerGameplayTests`
    - `GroundScrollerTests`
+   - `InputModeWatcherTests`
+   - `PlayerControllerControlSchemeTests`
+   - `GameManagerPauseInputTests`
 
 Tests cover vehicle selection, dirt emitters, game-over exit drive, near-miss scoring, pause, leaderboard, ground scroll gating, and core gameplay rules.
+
+### Mobile & gamepad input tests
+
+Gamepad and touch input is **simulated** with the Input System's `InputTestFixture` — no controller or touchscreen hardware is needed. Edit Mode suites cover input-mode detection (`InputModeWatcherTests`), the per-scheme movement bindings including left stick and d-pad (`PlayerControllerControlSchemeTests`), and the Esc/Start pause hotkeys (`GameManagerPauseInputTests`). The Play Mode suite `MobileAndGamepadE2ETests` drives the real scene with a simulated gamepad and touchscreen: stick/d-pad movement, Start-button pause and resume, touch-mode switching, the on-screen stick and pause button, and the controls-hint text.
+
+Enabling this required listing `com.unity.inputsystem` under `testables` in `Packages/manifest.json`, which also makes the Input System package's **own** tests appear in Test Runner — they can be ignored (or filtered out by selecting only the `DisasterTests` / `DisasterPlayModeTests` assemblies).
 
 ### Rubric E2E (Play Mode + video)
 
@@ -70,7 +79,7 @@ Play Mode tests in `Assets/Tests/PlayMode/RubricE2ETests.cs` map directly to [`P
 
 Requires **ffmpeg** on your PATH for `.webm` encoding (`brew install ffmpeg`). Without ffmpeg, PNG frame sequences are still saved under each scenario’s `frames/` folder.
 
-**Run without video:** Test Runner → **PlayMode** tab → run `RubricE2ETests` (faster; no screen capture).
+**Run without video:** Test Runner → **PlayMode** tab → run `RubricE2ETests` (faster; no screen capture). The same tab also runs `MobileAndGamepadE2ETests` (simulated gamepad/touch input; no video capture).
 
 | Test | Rubric area |
 |------|-------------|

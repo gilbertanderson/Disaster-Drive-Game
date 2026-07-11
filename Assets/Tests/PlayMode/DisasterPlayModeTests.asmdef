@@ -4,6 +4,7 @@
     "references": [
         "Unity.TextMeshPro",
         "Unity.InputSystem",
+        "Unity.InputSystem.TestFramework",
         "Game"
     ],
     "includePlatforms": [],
