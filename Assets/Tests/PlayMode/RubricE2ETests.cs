@@ -1,6 +1,5 @@
 using System.Collections;
 using System.Linq;
-using System.Reflection;
 using NUnit.Framework;
 using TMPro;
 using UnityEngine;
@@ -8,6 +7,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
+using static PlayModeReflectionHelpers;
 
 /// <summary>
 /// Play Mode end-to-end tests mapped to PROJECT_RUBRIC.md pre-submit checklist.
@@ -60,8 +60,7 @@ public class RubricE2ETests
         yield return RubricE2ERecording.Begin("02_drive_starts_run");
 
         Assert.That(gameManager.IsGameActive, Is.False);
-        gameManager.StartGame();
-        yield return new WaitForSeconds(0.5f);
+        yield return StartRunAndWaitUntilActive();
 
         Assert.That(gameManager.IsGameActive, Is.True);
         Assert.That(gameManager.IsPaused, Is.False);
@@ -74,8 +73,7 @@ public class RubricE2ETests
     {
         yield return RubricE2ERecording.Begin("03_wasd_vehicle_movement");
 
-        gameManager.StartGame();
-        yield return new WaitForSeconds(0.3f);
+        yield return StartRunAndWaitUntilActive();
 
         Vector3 startPos = player.transform.position;
         yield return HoldKey(Key.D, 0.8f);
@@ -92,8 +90,7 @@ public class RubricE2ETests
     {
         yield return RubricE2ERecording.Begin("04_rock_hit_timer_penalty");
 
-        gameManager.StartGame();
-        yield return new WaitForSeconds(0.2f);
+        yield return StartRunAndWaitUntilActive();
 
         float before = GetPrivateField<float>(gameManager, "timeRemaining");
         gameManager.OnPlayerHit(player != null ? player.transform.position : Vector3.zero);
@@ -111,7 +108,7 @@ public class RubricE2ETests
     {
         yield return RubricE2ERecording.Begin("05_near_miss_bonus");
 
-        gameManager.StartGame();
+        yield return StartRunAndWaitUntilActive();
         SetPrivateField(gameManager, "lastNearMissTime", -10f);
         float before = GetPrivateField<float>(gameManager, "timeRemaining");
 
@@ -130,8 +127,7 @@ public class RubricE2ETests
     {
         yield return RubricE2ERecording.Begin("06_pause_overlay");
 
-        gameManager.StartGame();
-        yield return new WaitForSeconds(0.3f);
+        yield return StartRunAndWaitUntilActive();
 
         gameManager.TogglePause();
         Assert.That(gameManager.IsPaused, Is.True);
@@ -151,8 +147,7 @@ public class RubricE2ETests
     {
         yield return RubricE2ERecording.Begin("07_game_over_retry");
 
-        gameManager.StartGame();
-        yield return new WaitForSeconds(0.3f);
+        yield return StartRunAndWaitUntilActive();
 
         InvokePrivate(gameManager, "GameOver");
         yield return new WaitForSeconds(1.5f);
@@ -176,7 +171,7 @@ public class RubricE2ETests
         var spawner = Object.FindAnyObjectByType<SpawnManager>();
         Assert.That(spawner, Is.Not.Null);
 
-        gameManager.StartGame();
+        yield return StartRunAndWaitUntilActive();
         yield return new WaitForSeconds(3f);
 
         Assert.That(MoveDown.ActiveRockCount, Is.GreaterThan(0),
@@ -191,8 +186,7 @@ public class RubricE2ETests
     {
         yield return RubricE2ERecording.Begin("08b_game_over_exit_drive");
 
-        gameManager.StartGame();
-        yield return new WaitForSeconds(0.3f);
+        yield return StartRunAndWaitUntilActive();
 
         var playerObject = player.gameObject;
         Assert.That(playerObject.activeSelf, Is.True);
@@ -245,7 +239,7 @@ public class RubricE2ETests
         Assert.That(GetPrivateField<GameObject>(gameManager, "fireworksPrefab"), Is.Not.Null,
             "Fireworks for new #1 best time.");
 
-        gameManager.StartGame();
+        yield return StartRunAndWaitUntilActive();
         yield return new WaitForSeconds(2f);
         var rock = Object.FindObjectsByType<MoveDown>(FindObjectsInactive.Include).FirstOrDefault();
         if (rock != null)
@@ -259,6 +253,16 @@ public class RubricE2ETests
 
         yield return RubricE2ERecording.CaptureForSeconds(RecordSeconds);
         yield return RubricE2ERecording.End();
+    }
+
+    // StartGame runs a 3-2-1-GO countdown (4 x 0.8s beats) plus a camera intro
+    // before IsGameActive flips, so a fixed post-StartGame wait races the run start.
+    IEnumerator StartRunAndWaitUntilActive()
+    {
+        gameManager.StartGame();
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => gameManager.IsGameActive, 15f);
+        Assert.That(gameManager.IsGameActive, Is.True,
+            "Run should become active once the start countdown and camera intro finish.");
     }
 
     static IEnumerator HoldKey(Key key, float seconds)
@@ -280,23 +284,5 @@ public class RubricE2ETests
             InputSystem.QueueEvent(eventPtr);
             InputSystem.Update();
         }
-    }
-
-    static T GetPrivateField<T>(object target, string name)
-    {
-        var field = target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
-        return field != null ? (T)field.GetValue(target) : default;
-    }
-
-    static void SetPrivateField(object target, string name, object value)
-    {
-        var field = target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
-        field?.SetValue(target, value);
-    }
-
-    static void InvokePrivate(object target, string methodName)
-    {
-        var method = target.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic);
-        method?.Invoke(target, null);
     }
 }

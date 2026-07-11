@@ -10,15 +10,29 @@ using UnityEngine.InputSystem.Controls;
 // matching how real hardware input reaches the game.
 internal static class InputSimulationHelpers
 {
+    // Waits a realtime duration, frame by frame, so it keeps advancing while
+    // the game is paused (Time.timeScale = 0).
+    public static IEnumerator WaitRealtime(float seconds)
+    {
+        float end = Time.realtimeSinceStartup + seconds;
+        while (Time.realtimeSinceStartup < end)
+            yield return null;
+    }
+
+    // Waits until the condition holds or the timeout elapses; the caller
+    // asserts on the condition afterwards.
+    public static IEnumerator WaitUntilOrTimeout(System.Func<bool> condition, float timeoutSeconds)
+    {
+        float deadline = Time.realtimeSinceStartup + timeoutSeconds;
+        while (!condition() && Time.realtimeSinceStartup < deadline)
+            yield return null;
+    }
+
     // Deflects a stick, holds it for a realtime duration, then recenters it.
     public static IEnumerator HoldStick(InputTestFixture input, StickControl stick, Vector2 direction, float seconds)
     {
         input.Set(stick, direction, queueEventOnly: true);
-
-        float end = Time.realtimeSinceStartup + seconds;
-        while (Time.realtimeSinceStartup < end)
-            yield return null;
-
+        yield return WaitRealtime(seconds);
         input.Set(stick, Vector2.zero, queueEventOnly: true);
         yield return null;
     }
@@ -27,11 +41,7 @@ internal static class InputSimulationHelpers
     public static IEnumerator HoldButton(InputTestFixture input, ButtonControl button, float seconds)
     {
         input.Press(button, queueEventOnly: true);
-
-        float end = Time.realtimeSinceStartup + seconds;
-        while (Time.realtimeSinceStartup < end)
-            yield return null;
-
+        yield return WaitRealtime(seconds);
         input.Release(button, queueEventOnly: true);
         yield return null;
     }
@@ -64,9 +74,7 @@ internal static class InputSimulationHelpers
         eventData.position = start + screenDelta;
         ExecuteEvents.Execute(stickHandle, eventData, ExecuteEvents.dragHandler);
 
-        float end = Time.realtimeSinceStartup + seconds;
-        while (Time.realtimeSinceStartup < end)
-            yield return null;
+        yield return WaitRealtime(seconds);
 
         ExecuteEvents.Execute(stickHandle, eventData, ExecuteEvents.pointerUpHandler);
         yield return null;

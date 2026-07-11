@@ -24,8 +24,13 @@ public class InputModeWatcher : MonoBehaviour
 
     public static void IgnoreDevice(InputDevice device)
     {
-        if (device != null)
-            ignoredDevices.Add(device);
+        if (device == null)
+            return;
+        // Virtual devices are recreated each time the on-screen controls are
+        // shown; drop entries whose device no longer exists so the set doesn't
+        // grow for the lifetime of the process.
+        ignoredDevices.RemoveWhere(d => !d.added);
+        ignoredDevices.Add(device);
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
