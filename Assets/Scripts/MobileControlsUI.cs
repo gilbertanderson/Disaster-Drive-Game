@@ -61,7 +61,13 @@ public class MobileControlsUI : MonoBehaviour
     private void SetShown(bool show)
     {
         if (stickRoot != null && stickRoot.activeSelf != show)
+        {
             stickRoot.SetActive(show);
+            // Disabling the stick destroys its virtual gamepad; the replacement
+            // device created on the next show must be registered as ignored again.
+            if (!show)
+                stickDeviceIgnored = false;
+        }
         // Keep pause reachable while paused so the same button resumes.
         bool showPause = show || (InputModeWatcher.Mode == InputMode.Touch
                                   && gameManager != null && gameManager.IsPaused);
