@@ -34,7 +34,16 @@ The playable scene is already listed in build settings.
 4. Click **Build** or **Build And Run**.
 5. For distribution, use the platform-specific player settings under **Edit → Project Settings → Player** (company name, product name, icons, resolution).
 
-No custom pre-build scripts or CI pipeline are configured — builds are produced from the Unity Editor.
+### Automated builds (GitHub Actions)
+Builds are also automated via [GameCI](https://game.ci) in [`.github/workflows/unity-build.yml`](.github/workflows/unity-build.yml). On every push/PR to `main` (or manually via **Actions → Unity Build → Run workflow**), CI runs the Edit Mode tests and then builds **macOS**, **Windows**, and **WebGL** players, uploaded as workflow artifacts.
+
+Unity requires a license to run in CI. Add these repository secrets once (**Settings → Secrets and variables → Actions**):
+
+| Secret | Value |
+|--------|-------|
+| `UNITY_LICENSE` | Contents of your `Unity_lic.ulf` personal license file ([how to get one](https://game.ci/docs/github/activation)) |
+| `UNITY_EMAIL` | Unity account email |
+| `UNITY_PASSWORD` | Unity account password |
 
 ## Project Submission
 Submit all three items required by the rubric:
