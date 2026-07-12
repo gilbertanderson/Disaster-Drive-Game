@@ -5,6 +5,9 @@ on:
     branches: [dev]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   trigger-cloud-build:
     name: Trigger Unity Cloud Build
@@ -16,9 +19,7 @@ jobs:
 
       - name: Extract commit info
         id: commit
-        run: |
-          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-          echo "branch=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
       - name: Trigger Cloud Build
         env:
@@ -26,16 +27,16 @@ jobs:
           CLOUD_BUILD_API_KEY: ${{ secrets.CLOUD_BUILD_API_KEY }}
           CLOUD_BUILD_ORG_ID: ${{ secrets.CLOUD_BUILD_ORG_ID }}
         run: |
-          if [ -z "$CLOUD_BUILD_API_KEY" ] || [ -z "$CLOUD_BUILD_PROJECT_ID" ]; then
+          if [ -z "$CLOUD_BUILD_API_KEY" ] || [ -z "$CLOUD_BUILD_PROJECT_ID" ] || [ -z "$CLOUD_BUILD_ORG_ID" ]; then
             echo "::notice::Cloud Build secrets not configured — skipping trigger."
             exit 0
           fi
-          # Trigger all enabled build targets for this project.
+          # Trigger all enabled build targets for this project. Secrets are
+          # configured past this point, so a failed trigger fails the job.
           # API docs: https://build-api.cloud.unity3d.com/docs/1.0.0/index.html
-          curl -sf -X POST \
+          curl -sSf -X POST \
             -H "Authorization: Basic $CLOUD_BUILD_API_KEY" \
             -H "Content-Type: application/json" \
             -d '{"clean": false}' \
-            "https://build-api.cloud.unity3d.com/api/v1/orgs/${CLOUD_BUILD_ORG_ID}/projects/${CLOUD_BUILD_PROJECT_ID}/buildtargets/_all/builds" \
-            && echo "Cloud Build triggered for ${{ steps.commit.outputs.sha_short }}" \
-            || echo "::warning::Cloud Build trigger failed — check secrets and project settings."
+            "https://build-api.cloud.unity3d.com/api/v1/orgs/${CLOUD_BUILD_ORG_ID}/projects/${CLOUD_BUILD_PROJECT_ID}/buildtargets/_all/builds"
+          echo "Cloud Build triggered for ${{ steps.commit.outputs.sha_short }}"

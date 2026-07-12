@@ -21,7 +21,8 @@ add_secret() {
     read -p "  value: " val
   fi
   if [ -n "$val" ]; then
-    gh secret set "$name" --body "$val" -R "$REPO"
+    # stdin, not --body: keeps secret values out of the process arg list
+    printf '%s' "$val" | gh secret set "$name" -R "$REPO"
     echo "  ✅ set"
   else
     echo "  ⏭  skipped"
