@@ -25,7 +25,7 @@
       "mcp__UnityMCP__refresh_unity",
       "mcp__UnityMCP__execute_code",
       "mcp__UnityMCP__manage_editor",
-      "mcp__unityMCP__read_console",
+      "mcp__UnityMCP__read_console",
       "mcp__unity-mcp__Unity_GetConsoleLogs",
       "mcp__unity-mcp__Unity_ReadConsole",
       "mcp__unity-mcp__Unity_Camera_Capture",

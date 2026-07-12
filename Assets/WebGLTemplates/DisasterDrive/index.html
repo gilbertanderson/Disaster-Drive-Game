@@ -45,6 +45,9 @@
         updateBannerVisibility();
       }
 
+      // File names and .br extensions must match the WebGL build output:
+      // they follow the build's product name and Player Settings > Publishing
+      // Settings > Compression Format (Brotli). Changing either breaks loading.
       var buildUrl = "Build";
       var loaderUrl = buildUrl + "/disasterDriveGame.loader.js";
       var config = {
