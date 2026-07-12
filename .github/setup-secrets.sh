@@ -3,10 +3,10 @@
 # Run from repo root: ./.github/setup-secrets.sh
 set -e
 
-REPO="gilbertanderson/Disaster-Drive-Game"
-
 command -v gh >/dev/null || { echo "GitHub CLI (gh) not found: https://cli.github.com"; exit 1; }
 gh auth status >/dev/null || { echo "Not authenticated. Run: gh auth login"; exit 1; }
+
+REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
 
 echo "Adding CI/CD secrets to $REPO"
 echo "Press Enter to skip any secret."
