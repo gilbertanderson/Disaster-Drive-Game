@@ -6,6 +6,14 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+permissions:
+  contents: write
+
+# Don't cancel tag builds — a release build should always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 jobs:
   build-webgl:
     name: Build WebGL
@@ -14,8 +22,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          lfs: true
 
       - name: Cache Library
         uses: actions/cache@v4
@@ -31,7 +37,7 @@ jobs:
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
-          unityVersion: 6000.4.7f1
+          unityVersion: auto
           targetPlatform: WebGL
 
       - name: Upload WebGL build
@@ -41,10 +47,19 @@ jobs:
           path: build/WebGL/
           retention-days: 90
 
+      # Release assets are flat files — zip the build so its directory
+      # structure (index.html, Build/, TemplateData/) survives.
+      # sudo: unity-builder's container leaves build/ owned by root.
+      - name: Package build for release
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          cd build
+          sudo zip -r "WebGL-${GITHUB_REF_NAME}.zip" WebGL
+
       - name: Create release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          files: build/WebGL/**/*
+          files: build/WebGL-*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
