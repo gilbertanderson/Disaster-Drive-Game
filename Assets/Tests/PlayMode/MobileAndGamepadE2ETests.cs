@@ -159,7 +159,8 @@ public class MobileAndGamepadE2ETests : InputTestFixture
 
         var hint = GetPrivateField<TMP_Text>(gameManager, "controlsHintText");
         Assert.That(hint, Is.Not.Null, "controlsHintText should be wired in the scene.");
-        Assert.That(hint.text, Does.Contain("Start pause"),
+        // Assert on the device word, not exact copy, so hint wording can change.
+        Assert.That(hint.text, Does.Contain("Start"),
             "Controls hint should show gamepad instructions after gamepad use.");
 
         Set(gamepad.leftStick, Vector2.zero, queueEventOnly: true);
