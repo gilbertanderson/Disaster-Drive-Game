@@ -32,6 +32,16 @@ jobs:
           key: Library-tests-${{ hashFiles('Packages/manifest.json', 'ProjectSettings/ProjectVersion.txt') }}
           restore-keys: Library-tests-
 
+      # Unity 6000.4 batchmode intermittently aborts with "ADTM: Attempting to
+      # update control while a mix is ongoing" when the audio engine is active.
+      # Disable audio in the CI workspace only — the committed project keeps
+      # audio on, and no Edit Mode test plays audio (VehicleSelectorTests only
+      # toggles an AudioListener's enabled flag).
+      - name: Disable Unity audio (ADTM batchmode crash workaround)
+        run: |
+          sed -i 's/m_DisableAudio: 0/m_DisableAudio: 1/' ProjectSettings/AudioManager.asset
+          grep m_DisableAudio ProjectSettings/AudioManager.asset
+
       - name: Run Edit Mode tests
         uses: game-ci/unity-test-runner@v4
         env:
