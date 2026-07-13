@@ -5,6 +5,7 @@ on:
     branches: [main, dev]
   pull_request:
     branches: [main, dev]
+  workflow_dispatch:
 
 # unity-test-runner publishes the "Test Results" check via githubToken.
 permissions:
