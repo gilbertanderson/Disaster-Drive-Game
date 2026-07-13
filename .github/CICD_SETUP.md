@@ -7,8 +7,26 @@ Automated testing and build pipeline for Disaster Drive Game.
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
 | `tests.yml` | Push/PR to `main`, `dev` | Runs Edit Mode tests via game-ci |
-| `build-webgl.yml` | Push to `main`, tag `v*`, manual | Builds WebGL player; releases on tags |
+| `build-webgl.yml` | Push to `main`, tag `v*`, manual | Builds WebGL player; releases on tags; deploys `main` builds to GitHub Pages |
+| `build-standalone.yml` | Manual only | Builds macOS/Windows/Linux players on demand |
 | `cloud-build-trigger.yml` | Push to `dev`, manual | Triggers Unity Cloud Build (skips if secrets missing) |
+
+WebGL is the primary distribution target — every push to `main` ends with the
+game playable in the browser via GitHub Pages. Desktop players exist for the
+occasional native build and are never built automatically.
+
+## Play in the Browser (GitHub Pages)
+
+One-time repo setup: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+
+After that, every successful `build-webgl.yml` run on `main` deploys the build
+to `https://gilbertanderson.github.io/Disaster-Drive-Game/`.
+
+The project has **Decompression Fallback** enabled
+(`webGLDecompressionFallback: 1` in `ProjectSettings/ProjectSettings.asset`).
+Keep it on: GitHub Pages doesn't send the `Content-Encoding` headers that
+Brotli-compressed WebGL builds otherwise require, so disabling it breaks the
+hosted game with a "unable to parse …" loader error.
 
 ## Required GitHub Secrets
 

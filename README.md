@@ -34,7 +34,7 @@ The playable scene is already listed in build settings.
 4. Click **Build** or **Build And Run**.
 5. For distribution, use the platform-specific player settings under **Edit → Project Settings → Player** (company name, product name, icons, resolution).
 
-No custom pre-build scripts or CI pipeline are configured — builds are produced from the Unity Editor.
+Builds are also automated in CI: every push to `main` builds the WebGL player and deploys it to GitHub Pages so the game is playable in any browser, and desktop players (macOS/Windows/Linux) can be built on demand from the **Actions** tab. See [`.github/CICD_SETUP.md`](.github/CICD_SETUP.md).
 
 ## Project Submission
 Submit all three items required by the rubric:
