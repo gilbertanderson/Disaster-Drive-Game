@@ -37,7 +37,7 @@ jobs:
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
-          unityVersion: auto
+          unityVersion: 6000.4.8f1 # pinned: 6000.4.7f1 shadergraph has a CS0246 GUID bug on fresh imports, fixed in .8f1
           targetPlatform: WebGL
 
       - name: Upload WebGL build
