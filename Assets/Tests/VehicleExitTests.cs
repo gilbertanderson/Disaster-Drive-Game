@@ -23,27 +23,33 @@ public class VehicleExitTests
     [Test]
     public void ActiveRockCount_ResetsOnSubsystemRegistration()
     {
-        // ActiveRockCount is a static counter shared by every test in the run; reset it
-        // first so this test's expected increments don't depend on execution order.
-        typeof(MoveDown).GetMethod("ResetActiveRockCount", BindingFlags.Static | BindingFlags.NonPublic)
-            .Invoke(null, null);
-
+        // ActiveRockCount is a static counter shared by every test in the run, and
+        // whether AddComponent auto-fires OnEnable differs between the local editor
+        // and headless CI. Normalize: create the component first, then reset the
+        // counter and drive OnEnable/OnDisable explicitly so the increment /
+        // decrement / reset / clamp contract is what's tested, not editor timing.
         var rock = new GameObject("Rock");
         rock.AddComponent<Rigidbody>().useGravity = false;
-        rock.AddComponent<MoveDown>();
-        Assert.That(MoveDown.ActiveRockCount, Is.EqualTo(1));
+        var mover = rock.AddComponent<MoveDown>();
 
-        Object.DestroyImmediate(rock);
-        Assert.That(MoveDown.ActiveRockCount, Is.EqualTo(0));
+        var reset = typeof(MoveDown).GetMethod("ResetActiveRockCount", BindingFlags.Static | BindingFlags.NonPublic);
+        var onEnable = typeof(MoveDown).GetMethod("OnEnable", BindingFlags.Instance | BindingFlags.NonPublic);
+        var onDisable = typeof(MoveDown).GetMethod("OnDisable", BindingFlags.Instance | BindingFlags.NonPublic);
 
-        rock = new GameObject("Rock2");
-        rock.AddComponent<Rigidbody>().useGravity = false;
-        rock.AddComponent<MoveDown>();
-        Assert.That(MoveDown.ActiveRockCount, Is.EqualTo(1));
+        reset.Invoke(null, null);
+        onEnable.Invoke(mover, null);
+        Assert.That(MoveDown.ActiveRockCount, Is.EqualTo(1), "OnEnable should count the rock as active.");
 
-        typeof(MoveDown).GetMethod("ResetActiveRockCount", BindingFlags.Static | BindingFlags.NonPublic)
-            .Invoke(null, null);
-        Assert.That(MoveDown.ActiveRockCount, Is.EqualTo(0));
+        onDisable.Invoke(mover, null);
+        Assert.That(MoveDown.ActiveRockCount, Is.EqualTo(0), "OnDisable should release the count.");
+
+        // Extra OnDisable (e.g. destroy after a reset) must clamp at zero, not go negative.
+        onDisable.Invoke(mover, null);
+        Assert.That(MoveDown.ActiveRockCount, Is.EqualTo(0), "The counter must clamp at zero.");
+
+        onEnable.Invoke(mover, null);
+        reset.Invoke(null, null);
+        Assert.That(MoveDown.ActiveRockCount, Is.EqualTo(0), "Subsystem-registration reset should zero the counter.");
 
         Object.DestroyImmediate(rock);
     }
