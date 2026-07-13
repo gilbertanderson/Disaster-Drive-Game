@@ -23,33 +23,55 @@ public class SpawnManagerTests
     [Test]
     public void CacheSpawnX_PlacesSpawnLineOffScreenPastTopEdge()
     {
+        // CacheSpawnX resolves Camera.main by tag, and the open scene may already
+        // contain a "MainCamera"-tagged camera (CI runs in a default Untitled scene
+        // whose Main Camera sits near the origin). Disable pre-existing cameras so
+        // Camera.main can only resolve to this test's camera; restore them after.
+        var preexistingCameras = new System.Collections.Generic.List<Camera>();
+        foreach (var other in Object.FindObjectsByType<Camera>(FindObjectsSortMode.None))
+        {
+            if (other.enabled)
+            {
+                other.enabled = false;
+                preexistingCameras.Add(other);
+            }
+        }
+
         var cameraObject = new GameObject("MainCamera") { tag = "MainCamera" };
         var camera = cameraObject.AddComponent<Camera>();
         camera.transform.position = new Vector3(0f, 16f, 2.5f);
         camera.transform.rotation = Quaternion.Euler(90f, 0f, -90f);
 
-        float groundY = 0.06f;
-        SetPrivateField(spawnManager, "cachedGroundLevelY", groundY);
-        float spawnMargin = (float)GetPrivateField(spawnManager, "spawnMargin");
+        try
+        {
+            float groundY = 0.06f;
+            SetPrivateField(spawnManager, "cachedGroundLevelY", groundY);
+            float spawnMargin = (float)GetPrivateField(spawnManager, "spawnMargin");
 
-        InvokePrivate(spawnManager, "CacheSpawnX");
+            InvokePrivate(spawnManager, "CacheSpawnX");
 
-        Vector3 moveDirection = ScreenEdgeUtility.ComputeTravelDirection(camera);
-        float topAlongTravel = ScreenEdgeUtility.TopAlongTravel(camera, groundY, moveDirection);
-        Vector3 spawnPos = new Vector3(spawnManager.spawnX, groundY, 0f);
-        float spawnAlongTravel = Vector3.Dot(spawnPos, moveDirection);
+            Vector3 moveDirection = ScreenEdgeUtility.ComputeTravelDirection(camera);
+            float topAlongTravel = ScreenEdgeUtility.TopAlongTravel(camera, groundY, moveDirection);
+            Vector3 spawnPos = new Vector3(spawnManager.spawnX, groundY, 0f);
+            float spawnAlongTravel = Vector3.Dot(spawnPos, moveDirection);
 
-        // The spawn line sits spawnMargin behind the camera's top edge along the
-        // travel axis, i.e. fully off-screen before the rock starts moving down.
-        Assert.That(spawnAlongTravel, Is.EqualTo(topAlongTravel - spawnMargin).Within(0.01f),
-            "Rocks should spawn spawnMargin past the camera's top edge.");
+            // The spawn line sits spawnMargin behind the camera's top edge along the
+            // travel axis, i.e. fully off-screen before the rock starts moving down.
+            Assert.That(spawnAlongTravel, Is.EqualTo(topAlongTravel - spawnMargin).Within(0.01f),
+                "Rocks should spawn spawnMargin past the camera's top edge.");
 
-        Vector3 viewport = camera.WorldToViewportPoint(spawnPos);
-        bool offScreen = viewport.z < 0f || viewport.x < 0f || viewport.x > 1f || viewport.y < 0f || viewport.y > 1f;
-        Assert.IsTrue(offScreen,
-            $"Spawn position {spawnPos} should project outside the viewport, got {viewport}.");
-
-        Object.DestroyImmediate(cameraObject);
+            Vector3 viewport = camera.WorldToViewportPoint(spawnPos);
+            bool offScreen = viewport.z < 0f || viewport.x < 0f || viewport.x > 1f || viewport.y < 0f || viewport.y > 1f;
+            Assert.IsTrue(offScreen,
+                $"Spawn position {spawnPos} should project outside the viewport, got {viewport}.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(cameraObject);
+            foreach (var other in preexistingCameras)
+                if (other != null)
+                    other.enabled = true;
+        }
     }
 
     [Test]
@@ -148,10 +170,14 @@ public class SpawnManagerTests
         SetPrivateField(mover, "playerTransform", player.transform);
         SetPrivateField(mover, "moveDirection", Vector3.right);
 
-        // Park the player beside the rock, just outside the tight box (rock-local
-        // z half-extent ~0.51 + player half 0.5 => gap at local z = 1.2). The old
-        // rotation-inflated box (half-extent ~1.44) registered a hit here.
-        player.transform.position = rock.transform.rotation * new Vector3(0f, 0f, 1.2f);
+        // Park the player beside the rock, just outside the tight box. The player's
+        // box stays WORLD-aligned while the rock is yawed 45°, so its projection on
+        // the rock's local z axis is 0.5*(sin45+cos45) ≈ 0.707, not 0.5 — the contact
+        // boundary is ≈ 0.51 + 0.707 = 1.22, and the old value of 1.2 overlapped by a
+        // float hair. Park at 1.4: clear of the tight box but well inside the old
+        // rotation-inflated box (~1.44 + 0.707 ≈ 2.15), the false positive this
+        // test guards against.
+        player.transform.position = rock.transform.rotation * new Vector3(0f, 0f, 1.4f);
         Physics.SyncTransforms();
 
         InvokePrivate(mover, "TryDetectPlayerOverlap");
