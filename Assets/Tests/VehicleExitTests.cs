@@ -311,7 +311,11 @@ public class VehicleExitTests
     [Test]
     public void Update_KeepsDirtEmittersPlayingWhileVehicleExiting()
     {
+        // GroundScroller carries [RequireComponent(typeof(Renderer))]; a bare GameObject
+        // can't satisfy that (Renderer is abstract), so AddComponent<GroundScroller>()
+        // logs an error unless a concrete renderer already exists.
         var groundObject = new GameObject("GroundScroller");
+        groundObject.AddComponent<MeshRenderer>();
         groundObject.AddComponent<GroundScroller>();
 
         var selectorObject = new GameObject("VehicleSelector");

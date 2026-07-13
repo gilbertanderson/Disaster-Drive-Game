@@ -28,6 +28,13 @@ public class SpawnManagerTests
         camera.transform.position = new Vector3(0f, 16f, 2.5f);
         camera.transform.rotation = Quaternion.Euler(90f, 0f, -90f);
 
+        // Camera.main caches the last-resolved main camera and only reliably
+        // refreshes on a camera's enable/disable event; tagging the GameObject
+        // before the Camera component existed doesn't trigger that, so force a
+        // refresh here or CacheSpawnX() below can see a stale/null camera.
+        cameraObject.SetActive(false);
+        cameraObject.SetActive(true);
+
         float groundY = 0.06f;
         SetPrivateField(spawnManager, "cachedGroundLevelY", groundY);
         float spawnMargin = (float)GetPrivateField(spawnManager, "spawnMargin");
@@ -140,34 +147,42 @@ public class SpawnManagerTests
         InvokePrivate(spawnManager, "FitBoxColliderToVisual", rock, visual);
 
         var player = new GameObject("Player") { tag = "Player" };
-        var playerCollider = player.AddComponent<BoxCollider>();
-        playerCollider.size = Vector3.one;
+        try
+        {
+            var playerCollider = player.AddComponent<BoxCollider>();
+            playerCollider.size = Vector3.one;
 
-        SetPrivateField(mover, "objectRb", rb);
-        SetPrivateField(mover, "rockCollider", collider);
-        SetPrivateField(mover, "playerTransform", player.transform);
-        SetPrivateField(mover, "moveDirection", Vector3.right);
+            SetPrivateField(mover, "objectRb", rb);
+            SetPrivateField(mover, "rockCollider", collider);
+            SetPrivateField(mover, "playerTransform", player.transform);
+            SetPrivateField(mover, "moveDirection", Vector3.right);
 
-        // Park the player beside the rock, just outside the tight box (rock-local
-        // z half-extent ~0.51 + player half 0.5 => gap at local z = 1.2). The old
-        // rotation-inflated box (half-extent ~1.44) registered a hit here.
-        player.transform.position = rock.transform.rotation * new Vector3(0f, 0f, 1.2f);
-        Physics.SyncTransforms();
+            // Park the player beside the rock, just outside the tight box. The player's
+            // box is unrotated while the rock is yawed 45 degrees, so its effective
+            // reach along the rock's local Z axis is its half-diagonal (~0.71), not its
+            // face half-extent (0.5); required separation is ~0.51 + 0.71 = 1.22, so 1.3
+            // clears it with margin. The old rotation-inflated box (half-extent ~1.44)
+            // registered a hit even here.
+            player.transform.position = rock.transform.rotation * new Vector3(0f, 0f, 1.3f);
+            Physics.SyncTransforms();
 
-        InvokePrivate(mover, "TryDetectPlayerOverlap");
-        Assert.IsFalse((bool)GetPrivateField(mover, "hitPlayer"),
-            "Driving close beside a rock must not register a hit.");
+            InvokePrivate(mover, "TryDetectPlayerOverlap");
+            Assert.IsFalse((bool)GetPrivateField(mover, "hitPlayer"),
+                "Driving close beside a rock must not register a hit.");
 
-        // Move into genuine contact: the hit must still register.
-        player.transform.position = rock.transform.rotation * new Vector3(0f, 0f, 0.8f);
-        Physics.SyncTransforms();
+            // Move into genuine contact: the hit must still register.
+            player.transform.position = rock.transform.rotation * new Vector3(0f, 0f, 0.8f);
+            Physics.SyncTransforms();
 
-        InvokePrivate(mover, "TryDetectPlayerOverlap");
-        Assert.IsTrue((bool)GetPrivateField(mover, "hitPlayer"),
-            "Actual contact with the rock body must still count as a hit.");
-
-        Object.DestroyImmediate(player);
-        Object.DestroyImmediate(rock);
+            InvokePrivate(mover, "TryDetectPlayerOverlap");
+            Assert.IsTrue((bool)GetPrivateField(mover, "hitPlayer"),
+                "Actual contact with the rock body must still count as a hit.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(player);
+            Object.DestroyImmediate(rock);
+        }
     }
 
     private static void InvokePrivate(object target, string methodName, params object[] args)

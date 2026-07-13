@@ -98,8 +98,11 @@ public class GameplayCameraDirectorTests
     {
         director.SimulateFullIntro();
 
-        cameraShake.Shake();
-        cameraShake.SyncRestPosition();
+        // TickBeat() already called SyncRestPosition() internally when the intro
+        // finished; StopAndReset() snaps the camera back to whatever rest position
+        // that call recorded, verifying it was updated to the gameplay pose (not the
+        // stale one CameraShake cached at Awake()).
+        cameraShake.StopAndReset();
 
         Assert.That(cameraObject.transform.localPosition, Is.EqualTo(new Vector3(0f, 16f, 2.5f)).Using(Vector3EqualityComparer.Instance));
     }
