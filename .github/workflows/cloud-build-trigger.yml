@@ -2,7 +2,7 @@ name: Trigger Cloud Build
 
 on:
   push:
-    branches: [dev]
+    branches: [main, dev]
   workflow_dispatch:
 
 permissions:
