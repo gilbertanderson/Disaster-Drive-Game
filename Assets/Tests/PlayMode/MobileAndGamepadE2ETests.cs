@@ -81,6 +81,12 @@ public class MobileAndGamepadE2ETests : InputTestFixture
         SetStaticProperty(typeof(InputModeWatcher), "Mode", InputMode.Keyboard);
         GetPrivateStaticField<HashSet<InputDevice>>(typeof(InputModeWatcher), "ignoredDevices").Clear();
 
+        // Put the touch-controls toggle back to "auto" (follow Touch mode) so a
+        // test that flipped it can't leak the explicit on/off choice — the pref
+        // is persisted in PlayerPrefs and cached in a static field.
+        PlayerPrefs.DeleteKey(MobileControlsUI.TouchControlsPrefKey);
+        SetPrivateStaticField(typeof(MobileControlsUI), "touchControlsPref", int.MinValue);
+
         // Hide the on-screen controls while this test's input system still
         // exists, so the stick removes its virtual gamepad cleanly before
         // InputTestFixture restores the previous input state.
@@ -268,6 +274,103 @@ public class MobileAndGamepadE2ETests : InputTestFixture
 
         Assert.That(gameManager.IsPaused, Is.False, "The same button should resume the run.");
         Assert.That(Time.timeScale, Is.EqualTo(1f).Within(0.001f));
+    }
+
+    // --- Touch-controls toggle ---
+
+    [UnityTest]
+    public IEnumerator ToggleButton_HidesMobileControls_InTouchMode_AndPersistsChoice()
+    {
+        yield return StartRunAndWaitUntilActive();
+
+        yield return InputSimulationHelpers.Tap(this, ScreenCenter());
+
+        var mobileControls = Object.FindAnyObjectByType<MobileControlsUI>();
+        var stickRoot = GetPrivateField<GameObject>(mobileControls, "stickRoot");
+        var pauseRoot = GetPrivateField<GameObject>(mobileControls, "pauseRoot");
+        var toggleRoot = GetPrivateField<GameObject>(mobileControls, "toggleRoot");
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => stickRoot.activeInHierarchy, WaitTimeout);
+        Assert.That(stickRoot.activeInHierarchy, Is.True);
+        Assert.That(toggleRoot.activeInHierarchy, Is.True,
+            "The touch-controls toggle should be visible during a run in Touch mode.");
+
+        toggleRoot.GetComponent<Button>().onClick.Invoke();
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => !stickRoot.activeInHierarchy, WaitTimeout);
+
+        Assert.That(stickRoot.activeInHierarchy, Is.False,
+            "Toggling touch controls off should hide the on-screen stick even in Touch mode.");
+        Assert.That(pauseRoot.activeInHierarchy, Is.False,
+            "Toggling touch controls off should hide the on-screen pause button.");
+        Assert.That(InputModeWatcher.Mode, Is.EqualTo(InputMode.Touch),
+            "The toggle changes controls visibility, not the detected input mode.");
+        Assert.That(PlayerPrefs.GetInt(MobileControlsUI.TouchControlsPrefKey, -1), Is.EqualTo(0),
+            "The explicit off choice should be persisted in PlayerPrefs.");
+        Assert.That(toggleRoot.activeInHierarchy, Is.True,
+            "The toggle itself must stay visible so the controls can be turned back on.");
+
+        toggleRoot.GetComponent<Button>().onClick.Invoke();
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => stickRoot.activeInHierarchy, WaitTimeout);
+
+        Assert.That(stickRoot.activeInHierarchy, Is.True,
+            "Toggling touch controls back on should re-show the on-screen stick.");
+        Assert.That(PlayerPrefs.GetInt(MobileControlsUI.TouchControlsPrefKey, -1), Is.EqualTo(1),
+            "The explicit on choice should be persisted in PlayerPrefs.");
+    }
+
+    [UnityTest]
+    public IEnumerator ToggleButton_ForcesMobileControlsOn_InKeyboardMode()
+    {
+        yield return StartRunAndWaitUntilActive();
+
+        var keyboard = Keyboard.current ?? InputSystem.AddDevice<Keyboard>();
+        Press(keyboard.spaceKey, queueEventOnly: true);
+        yield return null;
+        yield return null;
+        Assert.That(InputModeWatcher.Mode, Is.EqualTo(InputMode.Keyboard));
+
+        var mobileControls = Object.FindAnyObjectByType<MobileControlsUI>();
+        var stickRoot = GetPrivateField<GameObject>(mobileControls, "stickRoot");
+        var toggleRoot = GetPrivateField<GameObject>(mobileControls, "toggleRoot");
+        // A touchscreen device is present (added in SetUp), so the toggle is
+        // offered even while playing with the keyboard.
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => toggleRoot.activeInHierarchy, WaitTimeout);
+        Assert.That(toggleRoot.activeInHierarchy, Is.True);
+        Assert.That(stickRoot.activeInHierarchy, Is.False);
+
+        toggleRoot.GetComponent<Button>().onClick.Invoke();
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => stickRoot.activeInHierarchy, WaitTimeout);
+
+        Assert.That(stickRoot.activeInHierarchy, Is.True,
+            "Forcing touch controls on should show the stick regardless of input mode.");
+        Assert.That(InputModeWatcher.Mode, Is.EqualTo(InputMode.Keyboard),
+            "Forcing touch controls on must not flip the detected input mode.");
+    }
+
+    [UnityTest]
+    public IEnumerator InGameControlsHint_ShowsAboveToggle_AndTracksInputMode()
+    {
+        yield return StartRunAndWaitUntilActive();
+
+        var mobileControls = Object.FindAnyObjectByType<MobileControlsUI>();
+        var hintRoot = GetPrivateField<GameObject>(mobileControls, "hintRoot");
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => hintRoot.activeInHierarchy, WaitTimeout);
+        Assert.That(hintRoot.activeInHierarchy, Is.True,
+            "The in-game controls hint should be visible during a run.");
+
+        var hintLabel = GetPrivateField<TMP_Text>(mobileControls, "hintLabel");
+
+        Set(gamepad.leftStick, Vector2.up, queueEventOnly: true);
+        yield return null;
+        yield return null;
+        Set(gamepad.leftStick, Vector2.zero, queueEventOnly: true);
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => hintLabel.text.Contains("Start"), WaitTimeout);
+        Assert.That(hintLabel.text, Does.Contain("Start"),
+            "The in-game hint should show gamepad instructions after gamepad use.");
+
+        yield return InputSimulationHelpers.Tap(this, ScreenCenter());
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => hintLabel.text.Contains("Drag stick"), WaitTimeout);
+        Assert.That(hintLabel.text, Does.Contain("Drag stick"),
+            "The in-game hint should show touch instructions once touch controls are active.");
     }
 
     // --- Helpers ---
