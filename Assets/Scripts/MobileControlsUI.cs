@@ -1,5 +1,7 @@
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
 using UnityEngine.InputSystem.OnScreen;
 using UnityEngine.UI;
 
@@ -31,9 +33,25 @@ public class MobileControlsUI : MonoBehaviour
 
     private void Start()
     {
+#if UNITY_EDITOR
+        // Let mouse drags stand in for touches so the stick is testable in the
+        // Editor without a touchscreen.
+        UnityEngine.InputSystem.EnhancedTouch.TouchSimulation.Enable();
+#endif
         gameManager = FindAnyObjectByType<GameManager>();
+        EnsureEventSystem();
         BuildUI();
         SetShown(false);
+    }
+
+    // The stick and pause button are pointer-driven UI; without an EventSystem
+    // (some scenes may lack one) touches would silently do nothing.
+    private static void EnsureEventSystem()
+    {
+        if (EventSystem.current != null || FindAnyObjectByType<EventSystem>() != null)
+            return;
+        var go = new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
+        DontDestroyOnLoad(go);
     }
 
     private void Update()

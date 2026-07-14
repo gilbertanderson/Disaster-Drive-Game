@@ -43,10 +43,13 @@ public class InputModeWatcher : MonoBehaviour
 
     private void Awake()
     {
-        // Best initial guess before the player touches anything: phones/tablets
-        // start in Touch, a machine with a pad attached (e.g. Steam Deck) starts
-        // in Gamepad, everything else starts in Keyboard.
-        if (Application.isMobilePlatform)
+        // Best initial guess before the player touches anything: any device with
+        // a touchscreen (phone, tablet, touch laptop, mobile WebGL) starts in
+        // Touch so the on-screen controls are visible from the first frame; a
+        // machine with a pad attached (e.g. Steam Deck) starts in Gamepad,
+        // everything else starts in Keyboard. A key press or stick nudge flips
+        // the mode right back, so desktops with touchscreens aren't stuck.
+        if (Application.isMobilePlatform || Touchscreen.current != null)
             SetMode(InputMode.Touch);
         else if (Gamepad.current != null)
             SetMode(InputMode.Gamepad);
