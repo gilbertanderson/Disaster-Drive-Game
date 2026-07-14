@@ -1097,7 +1097,7 @@ public class GameManager : MonoBehaviour
         switch (InputModeWatcher.Mode)
         {
             case InputMode.Touch:
-                controlsHintText.text = "Dodge Obstacles\nTouch controls off\nToggle: top right";
+                controlsHintText.text = "Dodge Obstacles\nTouch controls off\nToggle them below";
                 break;
             case InputMode.Gamepad:
                 controlsHintText.text = "Dodge Obstacles\nLeft stick steer\nStart pause";

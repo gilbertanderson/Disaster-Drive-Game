@@ -373,6 +373,32 @@ public class MobileAndGamepadE2ETests : InputTestFixture
             "The in-game hint should show touch instructions once touch controls are active.");
     }
 
+    [UnityTest]
+    public IEnumerator ToggleButton_ShowsOnStartScreen_AndUpdatesStartHint()
+    {
+        // No StartGame: the scene loads onto the start screen, where the toggle
+        // sits under the start panel's own controls hint (top left).
+        var mobileControls = Object.FindAnyObjectByType<MobileControlsUI>();
+        Assert.That(mobileControls, Is.Not.Null, "MobileControlsUI should self-bootstrap at runtime.");
+        var toggleRoot = GetPrivateField<GameObject>(mobileControls, "toggleRoot");
+        var hintRoot = GetPrivateField<GameObject>(mobileControls, "hintRoot");
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => toggleRoot.activeInHierarchy, WaitTimeout);
+
+        Assert.That(toggleRoot.activeInHierarchy, Is.True,
+            "The toggle should be offered on the start screen when a touchscreen is present.");
+        Assert.That(hintRoot.activeInHierarchy, Is.False,
+            "The overlay hint stays hidden on the start screen — the start panel has its own controls hint.");
+
+        toggleRoot.GetComponent<Button>().onClick.Invoke();
+        yield return null;
+
+        Assert.That(PlayerPrefs.GetInt(MobileControlsUI.TouchControlsPrefKey, -1), Is.EqualTo(1),
+            "Toggling on from the start screen should persist the on choice.");
+        var hint = GetPrivateField<TMP_Text>(gameManager, "controlsHintText");
+        Assert.That(hint.text, Does.Contain("Drag stick"),
+            "The start screen hint should switch to touch instructions when controls are forced on.");
+    }
+
     // --- Helpers ---
 
     static Vector2 ScreenCenter()

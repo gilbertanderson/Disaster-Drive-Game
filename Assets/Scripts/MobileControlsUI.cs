@@ -8,7 +8,7 @@ using UnityEngine.InputSystem.OnScreen;
 using UnityEngine.UI;
 
 // On-screen touch controls: a virtual stick (bottom-left) and a pause button
-// (bottom-right), plus a top-right block with a controls hint and, under it, a
+// (bottom-right), plus a top-left block with a controls hint and, under it, a
 // TOUCH CONTROLS toggle. The stick is an Input System OnScreenStick that feeds
 // <Gamepad>/leftStick, so PlayerController's gamepad binding drives the vehicle
 // with no extra plumbing. Everything is built in code at runtime and only shown
@@ -145,17 +145,18 @@ public class MobileControlsUI : MonoBehaviour
 
     private void RefreshHintAndToggle()
     {
-        // The hint and toggle live above the run, not the menus: the start
-        // screen has its own controls hint, and the toggle would collide with
-        // the start panel's top-right layout.
+        // The overlay hint only shows during runs — the start screen has its
+        // own controls hint in the same top-left spot. The toggle shows in both
+        // places, sitting under whichever hint is visible.
         bool runVisible = gameManager.IsGameActive || gameManager.IsPaused;
-        bool showToggle = runVisible && TouchPlausible();
+        bool showHint = runVisible;
+        bool showToggle = (runVisible || gameManager.IsOnStartScreen) && TouchPlausible();
 
-        if (hintRoot != null && hintRoot.activeSelf != runVisible)
-            hintRoot.SetActive(runVisible);
+        if (hintRoot != null && hintRoot.activeSelf != showHint)
+            hintRoot.SetActive(showHint);
         if (toggleRoot != null && toggleRoot.activeSelf != showToggle)
             toggleRoot.SetActive(showToggle);
-        if (!runVisible)
+        if (!showHint && !showToggle)
             return;
 
         bool controlsOn = TouchControlsActive;
@@ -267,27 +268,29 @@ public class MobileControlsUI : MonoBehaviour
         });
         AddLabel(pauseRect, "II", 48f, TextAlignmentOptions.Center);
 
-        // --- Controller hints, top-right ---
+        // --- Controller hints, top-left (same spot as the start screen's own
+        // hint text, so the toggle sits under the hints in both contexts) ---
         hintRoot = new GameObject("ControlsHint", typeof(RectTransform), typeof(TextMeshProUGUI));
         var hintRect = (RectTransform)hintRoot.transform;
         hintRect.SetParent(canvasGo.transform, false);
-        hintRect.anchorMin = hintRect.anchorMax = new Vector2(1f, 1f);
-        hintRect.pivot = new Vector2(1f, 1f);
-        hintRect.anchoredPosition = new Vector2(-40f, -30f);
-        hintRect.sizeDelta = new Vector2(560f, 100f);
+        hintRect.anchorMin = hintRect.anchorMax = new Vector2(0f, 1f);
+        hintRect.pivot = new Vector2(0f, 1f);
+        hintRect.anchoredPosition = new Vector2(40f, -40f);
+        hintRect.sizeDelta = new Vector2(560f, 120f);
         hintLabel = hintRoot.GetComponent<TextMeshProUGUI>();
         hintLabel.fontSize = 32f;
-        hintLabel.alignment = TextAlignmentOptions.TopRight;
+        hintLabel.alignment = TextAlignmentOptions.TopLeft;
         hintLabel.color = new Color(1f, 1f, 1f, 0.75f);
         hintLabel.raycastTarget = false;
 
-        // --- Touch-controls toggle, top-right under the hints ---
+        // --- Touch-controls toggle, top-left under the hints (clears both the
+        // overlay hint above and the start screen's taller hint text) ---
         toggleRoot = new GameObject("TouchControlsToggle", typeof(RectTransform), typeof(Image), typeof(Button));
         var toggleRect = (RectTransform)toggleRoot.transform;
         toggleRect.SetParent(canvasGo.transform, false);
-        toggleRect.anchorMin = toggleRect.anchorMax = new Vector2(1f, 1f);
-        toggleRect.pivot = new Vector2(1f, 1f);
-        toggleRect.anchoredPosition = new Vector2(-40f, -140f);
+        toggleRect.anchorMin = toggleRect.anchorMax = new Vector2(0f, 1f);
+        toggleRect.pivot = new Vector2(0f, 1f);
+        toggleRect.anchoredPosition = new Vector2(40f, -180f);
         toggleRect.sizeDelta = new Vector2(360f, 72f);
         var toggleImage = toggleRoot.GetComponent<Image>();
         toggleImage.sprite = CreateRoundedRectSprite(128, 64, 30);

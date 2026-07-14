@@ -64,7 +64,7 @@ Tests cover vehicle selection, dirt emitters, game-over exit drive, near-miss sc
 
 ### Mobile & gamepad input tests
 
-Gamepad and touch input is **simulated** with the Input System's `InputTestFixture` — no controller or touchscreen hardware is needed. Edit Mode suites cover input-mode detection (`InputModeWatcherTests`), the touch-controls toggle preference (`MobileControlsToggleTests`), the per-scheme movement bindings including left stick and d-pad (`PlayerControllerControlSchemeTests`), and the Esc/Start pause hotkeys (`GameManagerPauseInputTests`). The Play Mode suite `MobileAndGamepadE2ETests` drives the real scene with a simulated gamepad and touchscreen: stick/d-pad movement, Start-button pause and resume, touch-mode switching, the on-screen stick and pause button, the TOUCH CONTROLS toggle (top right, under the in-game controls hint), and the controls-hint text.
+Gamepad and touch input is **simulated** with the Input System's `InputTestFixture` — no controller or touchscreen hardware is needed. Edit Mode suites cover input-mode detection (`InputModeWatcherTests`), the touch-controls toggle preference (`MobileControlsToggleTests`), the per-scheme movement bindings including left stick and d-pad (`PlayerControllerControlSchemeTests`), and the Esc/Start pause hotkeys (`GameManagerPauseInputTests`). The Play Mode suite `MobileAndGamepadE2ETests` drives the real scene with a simulated gamepad and touchscreen: stick/d-pad movement, Start-button pause and resume, touch-mode switching, the on-screen stick and pause button, the TOUCH CONTROLS toggle (top left, under the controls hints, on both the start screen and during runs), and the controls-hint text.
 
 Enabling this required listing `com.unity.inputsystem` under `testables` in `Packages/manifest.json`, which also makes the Input System package's **own** tests appear in Test Runner — they can be ignored (or filtered out by selecting only the `DisasterTests` / `DisasterPlayModeTests` assemblies).
 
@@ -96,7 +96,7 @@ Unity MCP can also run Edit Mode tests when the Editor is connected.
 - Camera-based screen bounds with wall clamping.
 - Endless runner scroll (ground, trees, rocks) with difficulty ramping.
 - Live run UI: wave number, dodge streak, low-time timer warning.
-- Adaptive controls: keyboard, gamepad, and on-screen touch controls (virtual stick bottom-left, pause bottom-right), with in-game controller hints at the top right and a TOUCH CONTROLS toggle under them; the toggle choice persists via `PlayerPrefs`.
+- Adaptive controls: keyboard, gamepad, and on-screen touch controls (virtual stick bottom-left, pause bottom-right), with controller hints at the top left and a TOUCH CONTROLS toggle under them — on the start screen and in-game; the toggle choice persists via `PlayerPrefs`.
 - Near-miss bonus with sound and `+2s` popup.
 - Game-over exit: vehicle drives off screen while the world keeps animating, then everything stops.
 - Camera shake on rock impacts (screen-plane jitter).
