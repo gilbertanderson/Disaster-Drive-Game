@@ -34,7 +34,7 @@ The playable scene is already listed in build settings.
 4. Click **Build** or **Build And Run**.
 5. For distribution, use the platform-specific player settings under **Edit → Project Settings → Player** (company name, product name, icons, resolution).
 
-No custom pre-build scripts or CI pipeline are configured — builds are produced from the Unity Editor.
+Deployment target is **Unity Play**: builds run in **Unity Build Automation** (Unity Cloud) and are shared/published to the browser from there — see [`.github/CICD_SETUP.md`](.github/CICD_SETUP.md) for the dashboard setup and the **Publish → WebGL Project** (WebGL Publisher) flow. GitHub Actions runs tests and CI artifact builds only.
 
 ## Project Submission
 Submit all three items required by the rubric:
