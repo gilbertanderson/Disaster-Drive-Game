@@ -5,7 +5,8 @@
 
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
-| `tests.yml` | Push/PR on `main`, `dev` | Edit Mode tests |
+| `tests.yml` | Push/PR on `main`, `dev` (skips docs-only changes) | Edit Mode tests |
+| `docs.yml` | Push/PR touching `**.md` or `.claude/**` | Markdown link check, workflow/skill YAML validation |
 | `build-webgl.yml` | Push to `main`, tags, manual | WebGL build + release |
 | `cloud-build-trigger.yml` | Push to `main`, `dev`, manual | Trigger Unity Build Automation |
 

@@ -1,0 +1,61 @@
+name: Docs
+
+# Runs on the docs-only changes that tests.yml ignores, so every PR still
+# gets a meaningful (but cheap) check. Offline only — no link fetching.
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - '**.md'
+      - '.claude/**'
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - '**.md'
+      - '.claude/**'
+      - '.github/scripts/check_markdown_links.py'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    name: Docs Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check relative markdown links
+        run: python3 .github/scripts/check_markdown_links.py
+
+      - name: Validate .claude YAML frontmatter and workflow syntax
+        run: |
+          python3 - <<'EOF'
+          import sys, yaml
+          from pathlib import Path
+
+          failed = False
+          for f in Path('.github/workflows').glob('*.yml'):
+              try:
+                  yaml.safe_load(f.read_text())
+              except yaml.YAMLError as e:
+                  print(f"{f}: invalid YAML: {e}")
+                  failed = True
+          for f in Path('.claude').rglob('SKILL.md'):
+              text = f.read_text()
+              if text.startswith('---'):
+                  try:
+                      yaml.safe_load(text.split('---', 2)[1])
+                  except yaml.YAMLError as e:
+                      print(f"{f}: invalid frontmatter: {e}")
+                      failed = True
+          sys.exit(1 if failed else 0)
+          EOF
