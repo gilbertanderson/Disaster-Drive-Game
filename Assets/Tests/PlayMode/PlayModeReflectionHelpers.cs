@@ -34,6 +34,13 @@ internal static class PlayModeReflectionHelpers
         return (T)field.GetValue(null);
     }
 
+    public static void SetPrivateStaticField(System.Type type, string fieldName, object value)
+    {
+        var field = type.GetField(fieldName, BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.IsNotNull(field, $"Could not find private static field '{fieldName}' on {type}.");
+        field.SetValue(null, value);
+    }
+
     public static void SetStaticProperty(System.Type type, string propertyName, object value)
     {
         var property = type.GetProperty(propertyName,

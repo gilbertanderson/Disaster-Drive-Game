@@ -1061,15 +1061,18 @@ public class GameManager : MonoBehaviour
     void OnEnable()
     {
         InputModeWatcher.ModeChanged += UpdateControlsHint;
+        MobileControlsUI.TouchControlsChanged += UpdateControlsHint;
     }
 
     void OnDisable()
     {
         InputModeWatcher.ModeChanged -= UpdateControlsHint;
+        MobileControlsUI.TouchControlsChanged -= UpdateControlsHint;
     }
 
-    // Hint reflects whatever device the player last used (see InputModeWatcher),
-    // so a phone shows touch instructions and a Steam Deck shows gamepad ones.
+    // Hint reflects whatever device the player last used (see InputModeWatcher)
+    // and the touch-controls toggle (see MobileControlsUI), so a phone shows
+    // touch instructions and a Steam Deck shows gamepad ones.
     void UpdateControlsHint()
     {
         if (controlsHintText == null)
@@ -1083,10 +1086,18 @@ public class GameManager : MonoBehaviour
             return;
         }
 
+        // The on-screen stick wins over the raw input mode: it can be forced on
+        // from any device via the in-game toggle, or forced off on a phone.
+        if (MobileControlsUI.TouchControlsActive)
+        {
+            controlsHintText.text = "Dodge Obstacles\nDrag stick to steer\nTap II to pause";
+            return;
+        }
+
         switch (InputModeWatcher.Mode)
         {
             case InputMode.Touch:
-                controlsHintText.text = "Dodge Obstacles\nDrag stick to steer\nTap II to pause";
+                controlsHintText.text = "Dodge Obstacles\nTouch controls off\nToggle them below";
                 break;
             case InputMode.Gamepad:
                 controlsHintText.text = "Dodge Obstacles\nLeft stick steer\nStart pause";
