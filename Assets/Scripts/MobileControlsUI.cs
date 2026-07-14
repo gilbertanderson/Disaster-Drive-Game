@@ -7,16 +7,17 @@ using UnityEngine.InputSystem.UI;
 using UnityEngine.InputSystem.OnScreen;
 using UnityEngine.UI;
 
-// On-screen touch controls: a virtual stick (bottom-left) and a pause button
-// (bottom-right), plus a top-left block with a controls hint and, under it, a
-// TOUCH CONTROLS toggle. The stick is an Input System OnScreenStick that feeds
-// <Gamepad>/leftStick, so PlayerController's gamepad binding drives the vehicle
-// with no extra plumbing. Everything is built in code at runtime and only shown
-// while the game is running; the scene is untouched.
+// On-screen touch controls: a virtual stick (bottom-left) and a persistent
+// top-left stack — controls hint, TOUCH CONTROLS toggle, and pause button.
+// The stick is an Input System OnScreenStick that feeds <Gamepad>/leftStick,
+// so PlayerController's gamepad binding drives the vehicle with no extra
+// plumbing. Everything is built in code at runtime; the scene is untouched.
 //
-// Whether the stick and pause button appear is decided by the toggle: until the
-// player uses it, the controls follow Touch mode automatically (the pre-toggle
-// behavior); once toggled, the explicit on/off choice wins and is persisted.
+// Whether the stick appears is decided by the toggle: until the player uses
+// it, the controls follow Touch mode automatically (the pre-toggle behavior);
+// once toggled, the explicit on/off choice wins and is persisted. The pause
+// button is independent of the toggle: it stays available for every input
+// device whenever a run is active or paused.
 public class MobileControlsUI : MonoBehaviour
 {
     private const float StickAreaSize = 340f;
@@ -88,6 +89,7 @@ public class MobileControlsUI : MonoBehaviour
         EnsureEventSystem();
         BuildUI();
         SetShown(false);
+        if (pauseRoot != null) pauseRoot.SetActive(false);
         if (hintRoot != null) hintRoot.SetActive(false);
         if (toggleRoot != null) toggleRoot.SetActive(false);
     }
@@ -114,6 +116,13 @@ public class MobileControlsUI : MonoBehaviour
         bool show = TouchControlsActive && gameManager.IsGameActive;
         SetShown(show);
 
+        // The pause button is part of the persistent top-left stack: reachable
+        // for any input device during a run and while paused (the same button
+        // resumes), independent of the touch-controls toggle.
+        bool showPause = gameManager.IsGameActive || gameManager.IsPaused;
+        if (pauseRoot != null && pauseRoot.activeSelf != showPause)
+            pauseRoot.SetActive(showPause);
+
         // The stick's virtual gamepad device only exists while the stick is
         // enabled; register it as ignored as soon as it resolves so touch drags
         // don't get misread as real gamepad input.
@@ -136,11 +145,6 @@ public class MobileControlsUI : MonoBehaviour
             if (!show)
                 stickDeviceIgnored = false;
         }
-        // Keep pause reachable while paused so the same button resumes.
-        bool showPause = show || (TouchControlsActive
-                                  && gameManager != null && gameManager.IsPaused);
-        if (pauseRoot != null && pauseRoot.activeSelf != showPause)
-            pauseRoot.SetActive(showPause);
     }
 
     private void RefreshHintAndToggle()
@@ -250,13 +254,13 @@ public class MobileControlsUI : MonoBehaviour
         onScreenStick.controlPath = "<Gamepad>/leftStick";
         onScreenStick.movementRange = StickMovementRange;
 
-        // --- Pause button, bottom-right (mirrors the stick, under the thumb) ---
+        // --- Pause button, top-left under the toggle (persistent during runs) ---
         pauseRoot = new GameObject("PauseButton", typeof(RectTransform), typeof(Image), typeof(Button));
         var pauseRect = (RectTransform)pauseRoot.transform;
         pauseRect.SetParent(canvasGo.transform, false);
-        pauseRect.anchorMin = pauseRect.anchorMax = new Vector2(1f, 0f);
+        pauseRect.anchorMin = pauseRect.anchorMax = new Vector2(0f, 1f);
         pauseRect.pivot = new Vector2(0.5f, 0.5f);
-        pauseRect.anchoredPosition = new Vector2(-200f, 240f);
+        pauseRect.anchoredPosition = new Vector2(220f, -330f);
         pauseRect.sizeDelta = new Vector2(PauseButtonSize, PauseButtonSize);
         var pauseImage = pauseRoot.GetComponent<Image>();
         pauseImage.sprite = circle;

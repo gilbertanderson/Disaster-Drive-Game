@@ -214,8 +214,8 @@ public class MobileAndGamepadE2ETests : InputTestFixture
         Assert.That(mobileControls, Is.Not.Null);
         Assert.That(GetPrivateField<GameObject>(mobileControls, "stickRoot").activeInHierarchy, Is.False,
             "The on-screen stick must stay hidden while playing with the keyboard.");
-        Assert.That(GetPrivateField<GameObject>(mobileControls, "pauseRoot").activeInHierarchy, Is.False,
-            "The on-screen pause button must stay hidden while playing with the keyboard.");
+        Assert.That(GetPrivateField<GameObject>(mobileControls, "pauseRoot").activeInHierarchy, Is.True,
+            "The top-left pause button persists during a run regardless of input device.");
     }
 
     [UnityTest]
@@ -299,8 +299,8 @@ public class MobileAndGamepadE2ETests : InputTestFixture
 
         Assert.That(stickRoot.activeInHierarchy, Is.False,
             "Toggling touch controls off should hide the on-screen stick even in Touch mode.");
-        Assert.That(pauseRoot.activeInHierarchy, Is.False,
-            "Toggling touch controls off should hide the on-screen pause button.");
+        Assert.That(pauseRoot.activeInHierarchy, Is.True,
+            "The top-left pause button persists even with touch controls toggled off.");
         Assert.That(InputModeWatcher.Mode, Is.EqualTo(InputMode.Touch),
             "The toggle changes controls visibility, not the detected input mode.");
         Assert.That(PlayerPrefs.GetInt(MobileControlsUI.TouchControlsPrefKey, -1), Is.EqualTo(0),
