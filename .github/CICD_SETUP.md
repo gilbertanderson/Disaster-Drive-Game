@@ -32,6 +32,11 @@ The project is already linked to Unity Cloud (`cloudProjectId` in
    - Enable **Auto-build** so every push to the branch builds automatically.
 4. Run the first build from the dashboard.
 
+Web builds automatically use the custom **DisasterDrive** WebGL template
+(mobile orientation lock + rotate overlay) — it's selected in
+`ProjectSettings.asset` and every Web build profile, so Build Automation picks
+it up with no dashboard change.
+
 ### Sharing / publishing the build
 
 - **Share link (automatic):** on any successful WebGL build in the Build
