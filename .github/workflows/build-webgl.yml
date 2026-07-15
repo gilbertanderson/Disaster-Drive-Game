@@ -25,6 +25,16 @@ jobs:
         with:
           lfs: true
 
+      # The Unity editor Docker image + Library cache can exhaust the runner's
+      # ~14 GB free disk, failing image extraction with "no space left on
+      # device" (exit 125). Reclaim ~25 GB of preinstalled toolchains first.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune --all --force
+          df -h /
+
       - name: Cache Library
         uses: actions/cache@v4
         with:
