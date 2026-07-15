@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Unity Web Player | Disaster Drive</title>
+    <title>Unity Web Player | {{{ PRODUCT_NAME }}}</title>
     <link rel="shortcut icon" href="TemplateData/favicon.ico">
     <link rel="stylesheet" href="TemplateData/style.css">
   </head>
   <body>
     <div id="unity-container" class="unity-desktop">
-      <canvas id="unity-canvas" width=960 height=600 tabindex="-1"></canvas>
+      <canvas id="unity-canvas" width={{{ WIDTH }}} height={{{ HEIGHT }}} tabindex="-1"></canvas>
       <div id="unity-loading-bar">
         <div id="unity-logo"></div>
         <div id="unity-progress-bar-empty">
@@ -20,11 +20,13 @@
       <div id="unity-footer">
         <div id="unity-logo-title-footer"></div>
         <div id="unity-fullscreen-button"></div>
-        <div id="unity-build-title">Disaster Drive</div>
+        <div id="unity-build-title">{{{ PRODUCT_NAME }}}</div>
       </div>
     </div>
     <script>
       var canvas = document.querySelector("#unity-canvas");
+      var unityInstance = null;
+      var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
       function unityShowBanner(msg, type) {
         var warningBanner = document.querySelector("#unity-warning");
@@ -45,24 +47,82 @@
         updateBannerVisibility();
       }
 
-      // File names and .br extensions must match the WebGL build output:
-      // they follow the build's product name and Player Settings > Publishing
-      // Settings > Compression Format (Brotli). Changing either breaks loading.
+      // Build file names and metadata are injected by Unity at build time, so
+      // product renames or compression changes can never break loading.
       var buildUrl = "Build";
-      var loaderUrl = buildUrl + "/disasterDriveGame.loader.js";
+      var loaderUrl = buildUrl + "/{{{ LOADER_FILENAME }}}";
       var config = {
         arguments: [],
-        dataUrl: buildUrl + "/disasterDriveGame.data.br",
-        frameworkUrl: buildUrl + "/disasterDriveGame.framework.js.br",
-        codeUrl: buildUrl + "/disasterDriveGame.wasm.br",
+        dataUrl: buildUrl + "/{{{ DATA_FILENAME }}}",
+        frameworkUrl: buildUrl + "/{{{ FRAMEWORK_FILENAME }}}",
+        codeUrl: buildUrl + "/{{{ CODE_FILENAME }}}",
         streamingAssetsUrl: "StreamingAssets",
-        companyName: "DefaultCompany",
-        productName: "Disaster Drive",
-        productVersion: "0.1.0",
+        companyName: {{{ JSON.stringify(COMPANY_NAME) }}},
+        productName: {{{ JSON.stringify(PRODUCT_NAME) }}},
+        productVersion: {{{ JSON.stringify(PRODUCT_VERSION) }}},
         showBanner: unityShowBanner,
       };
 
-      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+      // --- Orientation preference ---------------------------------------
+      // The game defaults to landscape on mobile. The in-game pause menu's
+      // ROTATION toggle calls window.setDisasterOrientationPreference via a
+      // .jslib; the choice is mirrored to localStorage so the next page load
+      // applies it before Unity boots (PlayerPrefs isn't readable from here).
+      var orientationPref = 'landscape';
+      try {
+        orientationPref = localStorage.getItem('disasterDrive.orientation') || 'landscape';
+      } catch (e) {}
+
+      function applyOrientationLock() {
+        // Locking is best-effort: mobile Chrome/Opera honor it only in
+        // fullscreen, iOS Safari not at all — the rotate overlay covers those.
+        if (!isMobile || !screen.orientation || !screen.orientation.lock) return;
+        screen.orientation.lock(orientationPref === 'portrait' ? 'portrait' : 'landscape')
+          .catch(function (error) {
+            console.log('Orientation lock unavailable, overlay fallback active:', error);
+          });
+      }
+
+      // Overlay nags only when the device orientation disagrees with the
+      // preferred one (rotate to landscape by default, to portrait if chosen).
+      function checkOrientation() {
+        if (!isMobile) return;
+        var overlay = document.querySelector('#portrait-overlay');
+        var deviceIsPortrait = window.innerHeight > window.innerWidth;
+        var wantPortrait = orientationPref === 'portrait';
+        if (deviceIsPortrait !== wantPortrait) {
+          var target = wantPortrait ? 'portrait' : 'landscape';
+          var message = '<div class="portrait-message"><h1>Please Rotate Your Device</h1><p>This game plays in ' + target + ' orientation</p></div>';
+          if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'portrait-overlay';
+            document.body.appendChild(overlay);
+          }
+          overlay.innerHTML = message;
+        } else if (overlay) {
+          overlay.remove();
+        }
+      }
+
+      window.setDisasterOrientationPreference = function (pref) {
+        orientationPref = (pref === 'portrait') ? 'portrait' : 'landscape';
+        try {
+          localStorage.setItem('disasterDrive.orientation', orientationPref);
+        } catch (e) {}
+        // The toggle tap's transient user activation makes a fullscreen
+        // request legal here — and lock only works in fullscreen on the
+        // mobile browsers that support it at all.
+        if (isMobile) {
+          try {
+            if (unityInstance) unityInstance.SetFullscreen(1);
+            else if (canvas.requestFullscreen) canvas.requestFullscreen();
+          } catch (e) {}
+        }
+        applyOrientationLock();
+        checkOrientation();
+      };
+
+      if (isMobile) {
         var meta = document.createElement('meta');
         meta.name = 'viewport';
         meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
@@ -70,36 +130,13 @@
         document.querySelector("#unity-container").className = "unity-mobile";
         canvas.className = "unity-mobile";
 
-        // Lock orientation to landscape
-        if (screen.orientation && screen.orientation.lock) {
-          screen.orientation.lock('landscape-primary').catch(function(error) {
-            console.log('Orientation lock failed, using CSS fallback:', error);
-          });
-        }
-
-        // CSS fallback for portrait orientation detection
-        function checkOrientation() {
-          var overlay = document.querySelector('#portrait-overlay');
-          if (window.innerHeight > window.innerWidth) {
-            if (!overlay) {
-              overlay = document.createElement('div');
-              overlay.id = 'portrait-overlay';
-              overlay.innerHTML = '<div class="portrait-message"><h1>Please Rotate Your Device</h1><p>This game requires landscape orientation</p></div>';
-              document.body.appendChild(overlay);
-            }
-          } else {
-            if (overlay) {
-              overlay.remove();
-            }
-          }
-        }
+        applyOrientationLock();
         checkOrientation();
         window.addEventListener('orientationchange', checkOrientation);
         window.addEventListener('resize', checkOrientation);
-
       } else {
-        canvas.style.width = "960px";
-        canvas.style.height = "600px";
+        canvas.style.width = "{{{ WIDTH }}}px";
+        canvas.style.height = "{{{ HEIGHT }}}px";
       }
 
       document.querySelector("#unity-loading-bar").style.display = "block";
@@ -109,10 +146,14 @@
       script.onload = () => {
         createUnityInstance(canvas, config, (progress) => {
           document.querySelector("#unity-progress-bar-full").style.width = 100 * progress + "%";
-              }).then((unityInstance) => {
+              }).then((instance) => {
+                unityInstance = instance;
                 document.querySelector("#unity-loading-bar").style.display = "none";
                 document.querySelector("#unity-fullscreen-button").onclick = () => {
                   unityInstance.SetFullscreen(1);
+                  // Fullscreen is the one place mobile browsers allow a lock;
+                  // re-assert the preference on the way in.
+                  applyOrientationLock();
                 };
 
               }).catch((message) => {

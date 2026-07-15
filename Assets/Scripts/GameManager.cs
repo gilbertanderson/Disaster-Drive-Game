@@ -4,6 +4,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 public class GameManager : MonoBehaviour
 {
@@ -166,6 +167,7 @@ public class GameManager : MonoBehaviour
     private Coroutine gameOverShowRoutine;
     private Coroutine pausePanelRoutine;
     private TwoPlayerUIStyler uiStyler;
+    private TMP_Text rotationButtonLabel;  // Label of the runtime-cloned pause-menu rotation toggle
 
     void Start()
     {
@@ -560,6 +562,15 @@ public class GameManager : MonoBehaviour
         UpdateMusicButtonLabel();
     }
 
+    // Wired to the pause overlay's runtime-built rotation button (see
+    // EnsureRuntimeUiRefs). The label refresh arrives via the
+    // OrientationPreferenceChanged event.
+    public void ToggleRotation()
+    {
+        OrientationManager.TogglePreference();
+        PlayClick();
+    }
+
     // Wired to the start screen's player-count toggle button.
     public void TogglePlayerCount()
     {
@@ -698,6 +709,31 @@ public class GameManager : MonoBehaviour
                 rt.sizeDelta = new Vector2(900f, 100f);
             }
             eliminationBannerText.text = "PLAYER 1 IS OUT!";
+        }
+
+        // Rotation toggle for the pause menu: cloned from the music button so
+        // it inherits the sprite, font, colors, and UIButtonFeedback without
+        // touching the scene. Continues the pause menu's 120px button pitch
+        // (Resume -10, Retry -130, Music -250).
+        if (rotationButtonLabel == null && musicButtonLabel != null)
+        {
+            var musicButton = musicButtonLabel.GetComponentInParent<Button>(true);
+            if (musicButton != null)
+            {
+                GameObject go = Instantiate(musicButton.gameObject, musicButton.transform.parent);
+                go.name = "RotationButtonRuntime";
+                var rt = go.GetComponent<RectTransform>();
+                if (rt != null)
+                    rt.anchoredPosition = new Vector2(0f, -370f);
+                var button = go.GetComponent<Button>();
+                // Instantiate copies the scene-wired persistent ToggleMusic
+                // call, which RemoveAllListeners cannot clear — swap the whole
+                // event for a fresh one.
+                button.onClick = new Button.ButtonClickedEvent();
+                button.onClick.AddListener(ToggleRotation);
+                rotationButtonLabel = go.GetComponentInChildren<TMP_Text>(true);
+                UpdateRotationButtonLabel();
+            }
         }
     }
 
@@ -1062,12 +1098,14 @@ public class GameManager : MonoBehaviour
     {
         InputModeWatcher.ModeChanged += UpdateControlsHint;
         MobileControlsUI.TouchControlsChanged += UpdateControlsHint;
+        OrientationManager.OrientationPreferenceChanged += UpdateRotationButtonLabel;
     }
 
     void OnDisable()
     {
         InputModeWatcher.ModeChanged -= UpdateControlsHint;
         MobileControlsUI.TouchControlsChanged -= UpdateControlsHint;
+        OrientationManager.OrientationPreferenceChanged -= UpdateRotationButtonLabel;
     }
 
     // Hint reflects whatever device the player last used (see InputModeWatcher)
@@ -1112,6 +1150,12 @@ public class GameManager : MonoBehaviour
     {
         if (musicButtonLabel != null && musicSource != null)
             musicButtonLabel.text = musicSource.mute ? "MUSIC: OFF" : "MUSIC: ON";
+    }
+
+    void UpdateRotationButtonLabel()
+    {
+        if (rotationButtonLabel != null)
+            rotationButtonLabel.text = OrientationManager.ButtonLabel;
     }
 
     void UpdateLeaderboardDisplay()
