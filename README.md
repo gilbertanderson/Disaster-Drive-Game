@@ -34,7 +34,9 @@ The playable scene is already listed in build settings.
 4. Click **Build** or **Build And Run**.
 5. For distribution, use the platform-specific player settings under **Edit → Project Settings → Player** (company name, product name, icons, resolution).
 
-No custom pre-build scripts or CI pipeline are configured — builds are produced from the Unity Editor.
+Deployment target is **Unity Play**: builds run in **Unity Build Automation** (Unity Cloud) and are shared/published to the browser from there — see [`.github/CICD_SETUP.md`](.github/CICD_SETUP.md) for the dashboard setup and the **Publish → WebGL Project** (WebGL Publisher) flow. GitHub Actions runs tests and CI artifact builds only.
+
+Web builds use the custom **DisasterDrive** WebGL template (`Assets/WebGLTemplates/DisasterDrive/`), selected in Player Settings and every Web build profile. On mobile browsers it locks the screen to the preferred orientation (landscape by default; lock engages in fullscreen where the browser supports it) and shows a "Please Rotate Your Device" overlay when the device is held the wrong way — iOS Safari can't lock, so the overlay is the fallback there. Build file names are injected via template macros, so product renames or compression changes can't break loading. The pause menu's **ROTATION** toggle switches the preferred orientation (landscape ↔ portrait) on any device; the choice persists via `PlayerPrefs` (`PreferredOrientation`) and, on the web, `localStorage`, so the page applies it again on the next load.
 
 ## Project Submission
 Submit all three items required by the rubric:
@@ -56,14 +58,16 @@ Edit Mode tests live in `Assets/Tests/`.
    - `GameManagerGameplayTests`
    - `GroundScrollerTests`
    - `InputModeWatcherTests`
+   - `MobileControlsToggleTests`
    - `PlayerControllerControlSchemeTests`
    - `GameManagerPauseInputTests`
+   - `OrientationPreferenceTests`
 
 Tests cover vehicle selection, dirt emitters, game-over exit drive, near-miss scoring, pause, leaderboard, ground scroll gating, and core gameplay rules.
 
 ### Mobile & gamepad input tests
 
-Gamepad and touch input is **simulated** with the Input System's `InputTestFixture` — no controller or touchscreen hardware is needed. Edit Mode suites cover input-mode detection (`InputModeWatcherTests`), the per-scheme movement bindings including left stick and d-pad (`PlayerControllerControlSchemeTests`), and the Esc/Start pause hotkeys (`GameManagerPauseInputTests`). The Play Mode suite `MobileAndGamepadE2ETests` drives the real scene with a simulated gamepad and touchscreen: stick/d-pad movement, Start-button pause and resume, touch-mode switching, the on-screen stick and pause button, and the controls-hint text.
+Gamepad and touch input is **simulated** with the Input System's `InputTestFixture` — no controller or touchscreen hardware is needed. Edit Mode suites cover input-mode detection (`InputModeWatcherTests`), the touch-controls toggle preference (`MobileControlsToggleTests`), the screen-orientation preference behind the pause menu's ROTATION toggle (`OrientationPreferenceTests`), the per-scheme movement bindings including left stick and d-pad (`PlayerControllerControlSchemeTests`), and the Esc/Start pause hotkeys (`GameManagerPauseInputTests`). The Play Mode suite `OrientationToggleE2ETests` verifies the runtime-built ROTATION button in the pause menu. The Play Mode suite `MobileAndGamepadE2ETests` drives the real scene with a simulated gamepad and touchscreen: stick/d-pad movement, Start-button pause and resume, touch-mode switching, the on-screen stick and the persistent top-left pause button, the TOUCH CONTROLS toggle (top left, under the controls hints, on both the start screen and during runs), and the controls-hint text.
 
 Enabling this required listing `com.unity.inputsystem` under `testables` in `Packages/manifest.json`, which also makes the Input System package's **own** tests appear in Test Runner — they can be ignored (or filtered out by selecting only the `DisasterTests` / `DisasterPlayModeTests` assemblies).
 
@@ -95,6 +99,7 @@ Unity MCP can also run Edit Mode tests when the Editor is connected.
 - Camera-based screen bounds with wall clamping.
 - Endless runner scroll (ground, trees, rocks) with difficulty ramping.
 - Live run UI: wave number, dodge streak, low-time timer warning.
+- Adaptive controls: keyboard, gamepad, and an on-screen virtual stick (bottom-left), with a persistent top-left stack — controller hints, a TOUCH CONTROLS toggle (start screen and in-game), and a pause button that stays available during runs for every input device; the toggle choice persists via `PlayerPrefs`.
 - Near-miss bonus with sound and `+2s` popup.
 - Game-over exit: vehicle drives off screen while the world keeps animating, then everything stops.
 - Camera shake on rock impacts (screen-plane jitter).

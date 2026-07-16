@@ -8,7 +8,54 @@ Automated testing and build pipeline for Disaster Drive Game.
 |----------|---------|--------------|
 | `tests.yml` | Push/PR to `main`, `dev` | Runs Edit Mode tests via game-ci |
 | `build-webgl.yml` | Push to `main`, tag `v*`, manual | Builds WebGL player; releases on tags |
-| `cloud-build-trigger.yml` | Push to `dev`, manual | Triggers Unity Cloud Build (skips if secrets missing) |
+| `cloud-build-trigger.yml` | Push to `main`, `dev`, manual | Triggers Unity Build Automation (skips if secrets missing) |
+
+## Deploying to Unity Play (primary path)
+
+The game ships to the browser through **Unity Build Automation** (Unity's cloud
+build service, formerly Cloud Build) and **Unity Play** — not through GitHub
+Actions. The GitHub workflows above only run tests and produce CI artifacts.
+
+The project is already linked to Unity Cloud (`cloudProjectId` in
+`ProjectSettings/ProjectSettings.asset`, org `gilbertandersonwork`).
+
+### One-time Build Automation setup (Unity Cloud dashboard)
+
+1. Go to [cloud.unity.com](https://cloud.unity.com) → select the
+   **My Game - Disaster** project → **DevOps → Build Automation**.
+2. Connect the source: choose **GitHub** and authorize the
+   `gilbertanderson/Disaster-Drive-Game` repository.
+3. **New build target**:
+   - Platform: **WebGL**
+   - Branch: `main` (add a second target for `dev` if you want preview builds)
+   - Unity version: **6000.4.7f1** (or "Latest 6000.4" to match `ProjectVersion.txt`)
+   - Enable **Auto-build** so every push to the branch builds automatically.
+4. Run the first build from the dashboard.
+
+Web builds automatically use the custom **DisasterDrive** WebGL template
+(mobile orientation lock + rotate overlay) — it's selected in
+`ProjectSettings.asset` and every Web build profile, so Build Automation picks
+it up with no dashboard change.
+
+### Sharing / publishing the build
+
+- **Share link (automatic):** on any successful WebGL build in the Build
+  Automation dashboard choose **Share** — Unity hosts the build and gives you a
+  link that plays in the browser. The link can be updated to always point at
+  the latest build of the target.
+- **Unity Play page (persistent showcase):** the project includes the
+  **WebGL Publisher** package (`com.unity.connect.share`). In the Editor:
+  **Publish → WebGL Project** → build (or select an existing WebGL build) →
+  it uploads to [play.unity.com](https://play.unity.com) and returns a
+  permanent link that stays the same across re-publishes. Max zipped build
+  size: 500 MB.
+
+### `cloud-build-trigger.yml` (optional API trigger)
+
+Build Automation's own auto-build makes this workflow redundant once the repo
+is connected in the dashboard. It exists as a fallback (e.g. if auto-build is
+off) and needs the `CLOUD_BUILD_*` secrets below; without them it skips
+gracefully.
 
 ## Required GitHub Secrets
 

@@ -18,6 +18,13 @@ internal static class TestReflectionHelpers
         return method.Invoke(target, args);
     }
 
+    public static object InvokePrivateStatic(System.Type type, string methodName, params object[] args)
+    {
+        var method = type.GetMethod(methodName, BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.IsNotNull(method, $"Could not find static method '{methodName}' on {type}.");
+        return method.Invoke(null, args);
+    }
+
     public static T GetPrivateField<T>(object target, string fieldName)
     {
         var field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
