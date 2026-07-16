@@ -1,5 +1,8 @@
-<<<<<<< HEAD
 # Disaster Drive — Claude Code Instructions
+
+Project guidance lives in [AGENTS.md](AGENTS.md); CI/deploy docs in
+[.github/CICD_SETUP.md](.github/CICD_SETUP.md). This file holds
+standing rules plus session-learned facts maintained by /retrospective.
 
 ## No hardcoded IDs or secrets in docs or scripts
 
@@ -19,19 +22,13 @@ Instead, point to the authoritative source:
 | Secret values | Enter interactively via `gh secret set … # paste at hidden prompt` |
 
 **Exception:** unit-test fixtures that require a specific value to exercise a code path (document the exception inline with a comment explaining why).
-=======
-# CLAUDE.md
-
-Project guidance lives in [AGENTS.md](AGENTS.md); CI/deploy docs in
-[.github/CICD_SETUP.md](.github/CICD_SETUP.md). This file holds
-session-learned facts maintained by /retrospective.
 
 ## Session learnings
 
 - (2026-07-14) Deployment target is Unity Play via Unity Build Automation (Unity Cloud dashboard), NOT GitHub Actions — GH Actions is for tests and CI artifacts only. Two earlier PRs (#37, #43) that deployed via Actions/Pages were closed as misaligned.
-- (2026-07-14) The project is already linked to Unity Cloud: `cloudProjectId` in `ProjectSettings/ProjectSettings.asset`, org `gilbertandersonwork`. Build Automation targets are configured at cloud.unity.com (dashboard-only; no API access from sessions without `CLOUD_BUILD_*` secrets).
+- (2026-07-14) The project is already linked to Unity Cloud: `cloudProjectId` in `ProjectSettings/ProjectSettings.asset`; org slug is in the cloud.unity.com URL. Build Automation targets are configured at cloud.unity.com (dashboard-only; no API access from sessions without `CLOUD_BUILD_*` secrets).
 - (2026-07-14) The `UNITY_LICENSE`/`UNITY_EMAIL`/`UNITY_PASSWORD` repo secrets are configured and working — CI license activation succeeds as of 2026-07-13.
-- (2026-07-15) The `CLOUD_BUILD_ORG_ID`/`CLOUD_BUILD_PROJECT_ID`/`CLOUD_BUILD_API_KEY` secrets are NOT set — `cloud-build-trigger.yml` skips with a `::notice::` on every push (confirmed via manual dispatch). `CLOUD_BUILD_PROJECT_ID` = the `cloudProjectId` `c8ddc39f-84be-4b8e-be27-e227c9aa3d98`; org slug is `gilbertandersonwork`; API key is dashboard-only (cloud.unity.com → Settings → API keys). Can't be set from remote sessions — `setup-secrets.sh` needs a local `gh` CLI; user adds them locally or in the GitHub UI.
+- (2026-07-16) The `CLOUD_BUILD_ORG_ID`/`CLOUD_BUILD_PROJECT_ID`/`CLOUD_BUILD_API_KEY` secrets ARE set and working — a manual dispatch of `cloud-build-trigger.yml` successfully queued a Unity Build Automation build (target `default-webgl`). Every push to `main`/`dev` now triggers a cloud build. `CLOUD_BUILD_PROJECT_ID` = the `cloudProjectId` in `ProjectSettings/ProjectSettings.asset` (no literals in docs); org slug is the `organizations/<id>` segment of the cloud.unity.com URL; API key is dashboard-only (cloud.unity.com → Settings → API keys). Gotcha: `gh secret set` via the in-session `!` prefix reads empty stdin and silently sets an EMPTY secret — interactive paste must happen in a real terminal or the GitHub UI.
 - (2026-07-15) WebGL build on `main` can fail at `no space left on device` while extracting the Unity Docker image (runner disk exhaustion, exit 125) — not a code/license error. Fix: add a free-disk-space step (rm dotnet/android/ghc/CodeQL toolchains) before `game-ci/unity-builder`.
 - (2026-07-14) Edit Mode suite is fully green in CI (98/98) as of 2026-07-14 — the four headless-only failures from 2026-07-13 (camera director, spawn manager ×2, rock counter) were fixed on main. Treat any new CI test failure as real, not "known flaky".
 - (2026-07-14) `build-webgl.yml` pins `unityVersion: 6000.4.8f1` (not the project's 6000.4.7f1) because .7f1 shadergraph has a CS0246 GUID bug on fresh imports.
@@ -43,4 +40,3 @@ session-learned facts maintained by /retrospective.
 - (2026-07-14) Squash-merging a PR into `main` puts `main` ahead of `dev`; run `/merge-sync` afterwards to keep the branches level. Merge convention here: mark draft ready (`update_pull_request` draft:false), then `merge_pull_request` with squash, on the user's say-so.
 - (2026-07-14) `main` and `dev` can fully diverge, not just drift main-ahead — the same source branch has been PR-merged into both separately (#51 into main, #52 into dev). `/merge-sync` handles this: expect a real merge commit on dev, then a dev→main fast-forward.
 - (2026-07-14) In this environment `git rev-parse --short revA revB` with two revs fails with "Needed a single revision" — call it once per rev.
->>>>>>> dev
