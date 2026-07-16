@@ -35,7 +35,10 @@ The project is already linked to Unity Cloud (`cloudProjectId` in
 Web builds automatically use the custom **DisasterDrive** WebGL template
 (mobile orientation lock + rotate overlay) — it's selected in
 `ProjectSettings.asset` and every Web build profile, so Build Automation picks
-it up with no dashboard change.
+it up with no dashboard change. The same files also set the Web graphics APIs
+to **WebGPU with WebGL2 fallback**; neither Build Automation nor
+`build-webgl.yml` needs any change, and `WebGraphicsSettingsTests` asserts the
+configuration in CI.
 
 ### Sharing / publishing the build
 
