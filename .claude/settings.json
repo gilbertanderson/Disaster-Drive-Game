@@ -34,7 +34,10 @@
       "mcp__unity-mcp__Unity_FindProjectAssets",
       "mcp__plugin_firebase_firebase__firebase_get_environment",
       "mcp__plugin_firebase_firebase__firebase_get_sdk_config",
-      "mcp__claude_ai_Vercel__get_project"
+      "mcp__claude_ai_Vercel__get_project",
+      "Bash(git fetch *)",
+      "mcp__github__pull_request_read",
+      "mcp__github__actions_list"
     ]
   }
 }
