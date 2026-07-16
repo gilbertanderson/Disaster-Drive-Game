@@ -26,22 +26,22 @@ deployed via Actions/Pages, #37 and #43, were closed as misaligned.)
 ## Blocked task — set 3 GitHub secrets (needs local `gh`, which the remote session lacked)
 
 ```bash
-gh secret set CLOUD_BUILD_ORG_ID     -R gilbertanderson/Disaster-Drive-Game --body "gilbertandersonwork"
-gh secret set CLOUD_BUILD_PROJECT_ID -R gilbertanderson/Disaster-Drive-Game --body "c8ddc39f-84be-4b8e-be27-e227c9aa3d98"
+gh secret set CLOUD_BUILD_ORG_ID     -R gilbertanderson/Disaster-Drive-Game   # your org slug
+gh secret set CLOUD_BUILD_PROJECT_ID -R gilbertanderson/Disaster-Drive-Game   # from ProjectSettings
 gh secret set CLOUD_BUILD_API_KEY    -R gilbertanderson/Disaster-Drive-Game   # paste at hidden prompt
 ```
 
-- `CLOUD_BUILD_PROJECT_ID` = the repo's `cloudProjectId` (already known, above).
-- `CLOUD_BUILD_ORG_ID` = org slug `gilbertandersonwork` (confirm against the
-  `organizations/<id>` segment in the cloud.unity.com URL; some orgs use a
-  numeric/GUID id instead of the slug).
+- `CLOUD_BUILD_PROJECT_ID` = the `cloudProjectId` field in
+  `ProjectSettings/ProjectSettings.asset` (grep for `cloudProjectId:`).
+- `CLOUD_BUILD_ORG_ID` = your org slug — read it from the
+  `organizations/<id>` segment of your cloud.unity.com URL. Some orgs use a
+  numeric/GUID id instead of a slug; use whichever the URL shows.
 - `CLOUD_BUILD_API_KEY` = **org-level API key** from
-  [cloud.unity.com](https://cloud.unity.com) → switch to the
-  **gilbertandersonwork** org → **Organization settings → API Keys** (may be
-  under "Service Accounts" or "DevOps → Build Automation → Settings" depending
-  on dashboard version). Copy the raw value — the workflow sends it as
-  `Authorization: Basic <key>`, so **do not** base64-encode it or add a
-  username.
+  [cloud.unity.com](https://cloud.unity.com) → **Organization settings →
+  API Keys** (may be under "Service Accounts" or "DevOps → Build Automation →
+  Settings" depending on dashboard version). Copy the raw value — the workflow
+  sends it as `Authorization: Basic <key>`, so **do not** base64-encode it or
+  add a username.
 
 Then trigger and check the log:
 
