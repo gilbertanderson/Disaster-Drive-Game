@@ -7,15 +7,15 @@ using UnityEngine.InputSystem.UI;
 using UnityEngine.InputSystem.OnScreen;
 using UnityEngine.UI;
 
-// On-screen touch controls: a virtual stick (bottom-left) and a persistent
-// top-left controls hint. The stick is an Input System OnScreenStick that
-// feeds <Gamepad>/leftStick, so PlayerController's gamepad binding drives the
-// vehicle with no extra plumbing. Everything is built in code at runtime;
+// On-screen touch controls: virtual sticks (P1 left / P2 right) and a
+// persistent top-left controls hint. Sticks are Input System OnScreenStick
+// controls that feed <Gamepad>/leftStick and <Gamepad>/rightStick, matching
+// PlayerController's 1P/2P bindings. Everything is built in code at runtime;
 // the scene is untouched. Pausing on touch devices is done by tapping the
 // timer HUD (see GameManager/TimerPauseTapHandler), so this component has no
 // pause button of its own.
 //
-// Whether the stick appears is decided by the TOUCH CONTROLS toggle in the
+// Whether the sticks appear is decided by the TOUCH CONTROLS toggle in the
 // pause menu (a runtime-built pause-panel button, see
 // GameManager.EnsureRuntimeUiRefs, which calls ToggleTouchControlsPref here):
 // until the player uses it, the controls follow Touch mode automatically (the
@@ -26,6 +26,8 @@ public class MobileControlsUI : MonoBehaviour
     private const float StickAreaSize = 340f;
     private const float StickHandleSize = 130f;
     private const float StickMovementRange = 105f;
+    private const float StickInsetX = 260f;
+    private const float StickInsetY = 240f;
 
     public const string TouchControlsPrefKey = "TouchControlsEnabled";
     private const int PrefUnloaded = int.MinValue; // Sentinel: PlayerPrefs not read yet
@@ -56,10 +58,12 @@ public class MobileControlsUI : MonoBehaviour
     }
 
     private GameManager gameManager;
-    private GameObject stickRoot;
+    private GameObject stickRoot;       // P1 left stick
+    private GameObject stickRootP2;     // P2 right stick (2P only)
     private GameObject hintRoot;
     private TextMeshProUGUI hintLabel;
     private OnScreenStick onScreenStick;
+    private OnScreenStick onScreenStickP2;
     private bool stickDeviceIgnored;
 
     // Last state the hint label was rendered for; avoids rebuilding the
@@ -87,7 +91,8 @@ public class MobileControlsUI : MonoBehaviour
         gameManager = FindAnyObjectByType<GameManager>();
         EnsureEventSystem();
         BuildUI();
-        SetShown(false);
+        SetLeftStickShown(false);
+        SetRightStickShown(false);
         if (hintRoot != null) hintRoot.SetActive(false);
     }
 
@@ -110,31 +115,46 @@ public class MobileControlsUI : MonoBehaviour
                 return;
         }
 
-        bool show = TouchControlsActive && gameManager.IsGameActive;
-        SetShown(show);
+        bool touchActive = TouchControlsActive && gameManager.IsGameActive;
+        bool twoPlayer = gameManager.IsTwoPlayerMode;
+        SetLeftStickShown(touchActive);
+        SetRightStickShown(touchActive && twoPlayer);
 
-        // The stick's virtual gamepad device only exists while the stick is
+        // The sticks' virtual gamepad device only exists while a stick is
         // enabled; register it as ignored as soon as it resolves so touch drags
         // don't get misread as real gamepad input.
-        if (show && !stickDeviceIgnored && onScreenStick != null && onScreenStick.control != null)
-        {
-            InputModeWatcher.IgnoreDevice(onScreenStick.control.device);
-            stickDeviceIgnored = true;
-        }
+        TryIgnoreStickDevice(onScreenStick);
+        TryIgnoreStickDevice(onScreenStickP2);
 
         RefreshHint();
     }
 
-    private void SetShown(bool show)
+    private void TryIgnoreStickDevice(OnScreenStick stick)
     {
-        if (stickRoot != null && stickRoot.activeSelf != show)
-        {
-            stickRoot.SetActive(show);
-            // Disabling the stick destroys its virtual gamepad; the replacement
-            // device created on the next show must be registered as ignored again.
-            if (!show)
-                stickDeviceIgnored = false;
-        }
+        if (stickDeviceIgnored || stick == null || stick.control == null)
+            return;
+        InputModeWatcher.IgnoreDevice(stick.control.device);
+        stickDeviceIgnored = true;
+    }
+
+    private void SetLeftStickShown(bool show)
+    {
+        if (stickRoot == null || stickRoot.activeSelf == show)
+            return;
+        stickRoot.SetActive(show);
+        // Disabling the stick destroys its virtual gamepad; the replacement
+        // device created on the next show must be registered as ignored again.
+        if (!show)
+            stickDeviceIgnored = false;
+    }
+
+    private void SetRightStickShown(bool show)
+    {
+        if (stickRootP2 == null || stickRootP2.activeSelf == show)
+            return;
+        stickRootP2.SetActive(show);
+        if (!show)
+            stickDeviceIgnored = false;
     }
 
     private void RefreshHint()
@@ -167,8 +187,10 @@ public class MobileControlsUI : MonoBehaviour
     {
         if (twoPlayer)
         {
+            if (controlsOn)
+                return "P1 left stick, P2 right stick\nTap the timer to pause";
             return mode == InputMode.Gamepad
-                ? "P1 WASD, P2 gamepad\nEsc / Start pauses"
+                ? "P1 left stick, P2 right stick\nEsc / Start pauses"
                 : "P1 WASD, P2 arrows\nEsc pauses";
         }
         if (controlsOn)
@@ -210,27 +232,15 @@ public class MobileControlsUI : MonoBehaviour
 
         Sprite circle = CreateCircleSprite(128);
 
-        // --- Virtual stick, bottom-left ---
-        stickRoot = new GameObject("StickArea", typeof(RectTransform), typeof(Image));
-        var areaRect = (RectTransform)stickRoot.transform;
-        areaRect.SetParent(canvasGo.transform, false);
-        areaRect.anchorMin = areaRect.anchorMax = new Vector2(0f, 0f);
-        areaRect.pivot = new Vector2(0.5f, 0.5f);
-        areaRect.anchoredPosition = new Vector2(260f, 240f);
-        areaRect.sizeDelta = new Vector2(StickAreaSize, StickAreaSize);
-        var areaImage = stickRoot.GetComponent<Image>();
-        areaImage.sprite = circle;
-        areaImage.color = new Color(1f, 1f, 1f, 0.18f);
+        // --- P1 virtual stick, bottom-left → <Gamepad>/leftStick ---
+        stickRoot = BuildStick(canvasGo.transform, "StickArea", circle,
+            new Vector2(0f, 0f), new Vector2(StickInsetX, StickInsetY),
+            "<Gamepad>/leftStick", out onScreenStick);
 
-        var handleGo = new GameObject("StickHandle", typeof(RectTransform), typeof(Image), typeof(OnScreenStick));
-        var handleRect = (RectTransform)handleGo.transform;
-        handleRect.SetParent(areaRect, false);
-        handleRect.sizeDelta = new Vector2(StickHandleSize, StickHandleSize);
-        handleGo.GetComponent<Image>().sprite = circle;
-        handleGo.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.55f);
-        onScreenStick = handleGo.GetComponent<OnScreenStick>();
-        onScreenStick.controlPath = "<Gamepad>/leftStick";
-        onScreenStick.movementRange = StickMovementRange;
+        // --- P2 virtual stick, bottom-right → <Gamepad>/rightStick ---
+        stickRootP2 = BuildStick(canvasGo.transform, "StickAreaP2", circle,
+            new Vector2(1f, 0f), new Vector2(-StickInsetX, StickInsetY),
+            "<Gamepad>/rightStick", out onScreenStickP2);
 
         // --- Controller hints, top-left (same spot as the start screen's own
         // hint text) ---
@@ -246,6 +256,32 @@ public class MobileControlsUI : MonoBehaviour
         hintLabel.alignment = TextAlignmentOptions.TopLeft;
         hintLabel.color = new Color(1f, 1f, 1f, 0.75f);
         hintLabel.raycastTarget = false;
+    }
+
+    private static GameObject BuildStick(Transform parent, string name, Sprite circle,
+        Vector2 anchor, Vector2 anchoredPosition, string controlPath, out OnScreenStick stick)
+    {
+        var root = new GameObject(name, typeof(RectTransform), typeof(Image));
+        var areaRect = (RectTransform)root.transform;
+        areaRect.SetParent(parent, false);
+        areaRect.anchorMin = areaRect.anchorMax = anchor;
+        areaRect.pivot = new Vector2(0.5f, 0.5f);
+        areaRect.anchoredPosition = anchoredPosition;
+        areaRect.sizeDelta = new Vector2(StickAreaSize, StickAreaSize);
+        var areaImage = root.GetComponent<Image>();
+        areaImage.sprite = circle;
+        areaImage.color = new Color(1f, 1f, 1f, 0.18f);
+
+        var handleGo = new GameObject("StickHandle", typeof(RectTransform), typeof(Image), typeof(OnScreenStick));
+        var handleRect = (RectTransform)handleGo.transform;
+        handleRect.SetParent(areaRect, false);
+        handleRect.sizeDelta = new Vector2(StickHandleSize, StickHandleSize);
+        handleGo.GetComponent<Image>().sprite = circle;
+        handleGo.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.55f);
+        stick = handleGo.GetComponent<OnScreenStick>();
+        stick.controlPath = controlPath;
+        stick.movementRange = StickMovementRange;
+        return root;
     }
 
     // Anti-aliased filled circle so the controls need no sprite assets.

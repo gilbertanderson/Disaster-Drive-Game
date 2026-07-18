@@ -497,7 +497,7 @@ public class VehicleExitTests
         SetPrivateProperty(nearMissManager, "IsGameActive", true);
         SetPrivateProperty(nearMissManager, "IsPaused", false);
         SetPrivateField(nearMissManager, "timeRemaining", 10f);
-        SetPrivateField(nearMissManager, "lastNearMissTime", -10f);
+        SetPrivateField(nearMissManager, "lastNearMissTime", new[] { -10f, -10f });
 
         var playerObject = new GameObject("Player");
         playerObject.transform.position = new Vector3(0f, 0f, 0f);

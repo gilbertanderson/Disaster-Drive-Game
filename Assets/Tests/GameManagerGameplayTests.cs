@@ -27,7 +27,7 @@ public class GameManagerGameplayTests
         SetPrivateProperty(gameManager, "IsGameActive", true);
         SetPrivateProperty(gameManager, "IsPaused", false);
         SetPrivateField(gameManager, "timeRemaining", 10f);
-        SetPrivateField(gameManager, "lastNearMissTime", -10f);
+        SetPrivateField(gameManager, "lastNearMissTime", new[] { -10f, -10f });
 
         gameManager.OnNearMiss();
 
@@ -40,11 +40,42 @@ public class GameManagerGameplayTests
         SetPrivateProperty(gameManager, "IsGameActive", true);
         SetPrivateProperty(gameManager, "IsPaused", false);
         SetPrivateField(gameManager, "timeRemaining", 10f);
-        SetPrivateField(gameManager, "lastNearMissTime", Time.timeSinceLevelLoad);
+        float now = Time.timeSinceLevelLoad;
+        SetPrivateField(gameManager, "lastNearMissTime", new[] { now, -10f });
 
         gameManager.OnNearMiss();
 
         Assert.That(GetPrivateField<float>(gameManager, "timeRemaining"), Is.EqualTo(10f).Within(0.001f));
+    }
+
+    [Test]
+    public void OnNearMiss_CooldownIsPerPlayer()
+    {
+        var p1Object = new GameObject("P1");
+        var p2Object = new GameObject("P2");
+        var p1 = p1Object.AddComponent<PlayerController>();
+        var p2 = p2Object.AddComponent<PlayerController>();
+        p1.playerIndex = 0;
+        p2.playerIndex = 1;
+
+        SetPrivateProperty(gameManager, "IsGameActive", true);
+        SetPrivateProperty(gameManager, "IsPaused", false);
+        SetPrivateProperty(gameManager, "IsTwoPlayerMode", true);
+        SetPrivateField(gameManager, "players", new[] { p1, p2 });
+        SetPrivateField(gameManager, "timeRemaining", 10f);
+        SetPrivateField(gameManager, "timeRemaining2", 10f);
+        float now = Time.timeSinceLevelLoad;
+        SetPrivateField(gameManager, "lastNearMissTime", new[] { now, -10f });
+
+        gameManager.OnNearMiss(p2);
+
+        Assert.That(GetPrivateField<float>(gameManager, "timeRemaining"), Is.EqualTo(10f).Within(0.001f),
+            "P1's clock must stay untouched when only P2 earns a near-miss.");
+        Assert.That(GetPrivateField<float>(gameManager, "timeRemaining2"), Is.EqualTo(12f).Within(0.001f),
+            "P2 must still receive a near-miss while P1 is inside the cooldown.");
+
+        Object.DestroyImmediate(p1Object);
+        Object.DestroyImmediate(p2Object);
     }
 
     [Test]

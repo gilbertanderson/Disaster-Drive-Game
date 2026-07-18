@@ -38,8 +38,10 @@ public class GameManager : MonoBehaviour
     // P1's vehicle slides outward in 2P so the pair frames the start-screen shot;
     // P2's spot is scene-authored (z -3.5) since it only exists in 2P. In 1P, P1
     // returns to its scene-authored preview position.
-    private const float Player1VehicleSinglePlayerZ = 2.25f;
-    private const float Player1VehicleTwoPlayerZ = 8f;
+    // Lateral (world Z) start slots. Screen-right is world −Z with the top-down
+    // camera, so these are centered on the camera/road line at Z = 2.5.
+    private const float Player1VehicleSinglePlayerZ = 2.5f;
+    private const float Player1VehicleTwoPlayerZ = 8.25f;
 
     [Header("Timer")]
     [SerializeField] private float startTime = 60f;   // Seconds on the clock at the start of a run
@@ -145,7 +147,7 @@ public class GameManager : MonoBehaviour
     private float displayedTimer;
     private float displayedTimer2;
     private float lastHitTime;
-    private float lastNearMissTime;
+    private readonly float[] lastNearMissTime = { float.NegativeInfinity, float.NegativeInfinity };
     private float lastVehicleCollisionTime = float.NegativeInfinity;
     private readonly bool[] eliminated = new bool[2];   // Set once a player's clock expires (2P)
     private readonly bool[] exitStarted = new bool[2];  // Guards against starting a player's exit drive twice
@@ -166,6 +168,8 @@ public class GameManager : MonoBehaviour
     private Coroutine startPanelHideRoutine;
     private Coroutine gameOverShowRoutine;
     private Coroutine pausePanelRoutine;
+    private readonly Coroutine[] penaltyFeedbackRoutines = new Coroutine[2];
+    private readonly Coroutine[] bonusFeedbackRoutines = new Coroutine[2];
     private TwoPlayerUIStyler uiStyler;
     private TMP_Text rotationButtonLabel;  // Label of the runtime-cloned pause-menu rotation toggle
     private TMP_Text touchControlsButtonLabel;  // Label of the runtime-cloned pause-menu touch-controls toggle
@@ -268,10 +272,10 @@ public class GameManager : MonoBehaviour
 
     void Update()
     {
-        // Esc (or the gamepad's Start button) pauses/resumes mid-run
-        if (IsGameActive && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
-            TogglePause();
-        if (IsGameActive && Gamepad.current != null && Gamepad.current.startButton.wasPressedThisFrame)
+        // Esc or any real gamepad's Start pauses/resumes mid-run (one toggle max
+        // per frame). Virtual pads from the on-screen sticks are skipped so they
+        // can't hide a physical Start press via Gamepad.current.
+        if (IsGameActive && WasPausePressedThisFrame())
             TogglePause();
 
         if (!IsGameActive || IsPaused)
@@ -304,8 +308,14 @@ public class GameManager : MonoBehaviour
             if (players != null)
             {
                 foreach (var p in players)
-                    if (p != null)
-                        p.speed += playerSpeedIncrease;
+                {
+                    if (p == null || !p.gameObject.activeInHierarchy || p.IsExiting)
+                        continue;
+                    int index = ResolvePlayerIndex(p);
+                    if (eliminated[index])
+                        continue;
+                    p.speed += playerSpeedIncrease;
+                }
             }
             if (spawnManager != null) spawnManager.IncreaseDifficulty(spawnIntervalMultiplier);
         }
@@ -332,8 +342,16 @@ public class GameManager : MonoBehaviour
 
         eliminated[index] = true;
         survivalTime[index] = Time.timeSinceLevelLoad - gameStartTime;
-        if (index == 0) timeRemaining = 0f;
-        else timeRemaining2 = 0f;
+        if (index == 0)
+        {
+            timeRemaining = 0f;
+            displayedTimer = 0f;
+        }
+        else
+        {
+            timeRemaining2 = 0f;
+            displayedTimer2 = 0f;
+        }
         UpdateTimerDisplay();
 
         bool anyoneLeft = !eliminated[0] || (IsTwoPlayerMode && !eliminated[1]);
@@ -414,7 +432,8 @@ public class GameManager : MonoBehaviour
             return;
 
         lastHitTime = Time.timeSinceLevelLoad;
-        lastNearMissTime = -nearMissCooldown;
+        lastNearMissTime[0] = float.NegativeInfinity;
+        lastNearMissTime[1] = float.NegativeInfinity;
         lastVehicleCollisionTime = float.NegativeInfinity;
         bestStreak = 0f;
         rocksDodged = 0;
@@ -475,8 +494,36 @@ public class GameManager : MonoBehaviour
 
         IsGameActive = true;
         gameStartTime = Time.timeSinceLevelLoad;
+        // Streak timing starts when driving begins, not when Drive was pressed
+        // (the countdown would otherwise inflate the first streak by ~3s).
+        lastHitTime = gameStartTime;
         nextRampTime = gameStartTime + rampInterval;
         countdownRoutine = null;
+    }
+
+    // True if Esc or a non-ignored gamepad Start was pressed this frame.
+    static bool WasPausePressedThisFrame()
+    {
+        if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+            return true;
+
+        foreach (var pad in Gamepad.all)
+        {
+            if (InputModeWatcher.IsDeviceIgnored(pad))
+                continue;
+            if (pad.startButton.wasPressedThisFrame)
+                return true;
+        }
+
+        return false;
+    }
+
+    // True while a player is still racing (not eliminated and not mid exit-drive).
+    public bool IsPlayerInteractable(PlayerController who)
+    {
+        if (who == null || !who.gameObject.activeInHierarchy || who.IsExiting)
+            return false;
+        return !eliminated[ResolvePlayerIndex(who)];
     }
 
     List<Transform> GetActivePlayerRoots()
@@ -636,10 +683,15 @@ public class GameManager : MonoBehaviour
         }
         if (p1 != null)
             p1.ApplyControlScheme(twoPlayer
-                ? PlayerController.ControlScheme.WasdOnly
+                ? PlayerController.ControlScheme.WasdAndLeftStick
                 : PlayerController.ControlScheme.WasdAndArrows);
-        if (p2 != null && twoPlayer)
-            p2.ApplyControlScheme(PlayerController.ControlScheme.ArrowsAndGamepad);
+        if (p2 != null)
+        {
+            if (twoPlayer)
+                p2.ApplyControlScheme(PlayerController.ControlScheme.ArrowsAndRightStick);
+            else
+                p2.DisableMovementInput();
+        }
 
         // The two players may never drive the same vehicle.
         if (twoPlayer && p1 != null && p2 != null)
@@ -852,7 +904,7 @@ public class GameManager : MonoBehaviour
         hitsTaken++;
         lastHitTime = Time.timeSinceLevelLoad;
         PlayImpactFeedback(hitPoint);
-        StartCoroutine(PenaltyFeedback(index, hitPenalty));
+        StartPenaltyFeedback(index, hitPenalty);
         UpdateTimerDisplay();
         CheckClockExpirations();
     }
@@ -870,23 +922,26 @@ public class GameManager : MonoBehaviour
         if (eliminated[ResolvePlayerIndex(a)] || eliminated[ResolvePlayerIndex(b)])
             return;
 
-        if (Time.time - lastVehicleCollisionTime < vehicleCollisionCooldown)
+        if (Time.timeSinceLevelLoad - lastVehicleCollisionTime < vehicleCollisionCooldown)
             return;
 
-        lastVehicleCollisionTime = Time.time;
+        lastVehicleCollisionTime = Time.timeSinceLevelLoad;
 
         Vector3 apart = a.transform.position - b.transform.position;
         apart.y = 0f;
         if (apart.sqrMagnitude < 0.001f)
             apart = Vector3.forward;
 
+        // Knock each body away from the other (a ← away from b, b ← away from a).
         a.ApplyCrashKnockback(apart);
         b.ApplyCrashKnockback(-apart);
 
         int indexA = ResolvePlayerIndex(a);
         int indexB = ResolvePlayerIndex(b);
-        float approachA = a.GetApproachSpeed(apart);
-        float approachB = b.GetApproachSpeed(-apart);
+        // Approach speed must use the toward-other direction: -apart for A (a→b),
+        // apart for B (b→a). Passing the away-from-other vector inverted rammer blame.
+        float approachA = a.GetApproachSpeed(-apart);
+        float approachB = b.GetApproachSpeed(apart);
 
         float penaltyA;
         float penaltyB;
@@ -908,11 +963,11 @@ public class GameManager : MonoBehaviour
 
         AddClock(indexA, -penaltyA);
         AddClock(indexB, -penaltyB);
-        hitsTaken++;
+        hitsTaken += 2;   // Both players took a hit
         lastHitTime = Time.timeSinceLevelLoad;
         PlayVehicleCrashFeedback(hitPoint);
-        StartCoroutine(PenaltyFeedback(indexA, penaltyA));
-        StartCoroutine(PenaltyFeedback(indexB, penaltyB));
+        StartPenaltyFeedback(indexA, penaltyA);
+        StartPenaltyFeedback(indexB, penaltyB);
         UpdateTimerDisplay();
         CheckClockExpirations();
     }
@@ -966,17 +1021,17 @@ public class GameManager : MonoBehaviour
         if (!IsGameActive || IsPaused)
             return;
 
-        if (Time.timeSinceLevelLoad - lastNearMissTime < nearMissCooldown)
-            return;
-
         int index = ResolvePlayerIndex(who);
         if (eliminated[index])
             return;
 
-        lastNearMissTime = Time.timeSinceLevelLoad;
+        if (Time.timeSinceLevelLoad - lastNearMissTime[index] < nearMissCooldown)
+            return;
+
+        lastNearMissTime[index] = Time.timeSinceLevelLoad;
         AddClock(index, nearMissBonus);
         PlayNearMissSound(GetPlayer(index));
-        StartCoroutine(BonusFeedback(index, nearMissBonus));
+        StartBonusFeedback(index, nearMissBonus);
         UpdateTimerDisplay();
     }
 
@@ -1025,6 +1080,36 @@ public class GameManager : MonoBehaviour
             panel.gameObject.SetActive(active);
     }
 
+    // Hit (−s) and near-miss (+s) share one popup per player; cancel any in-flight
+    // feedback before starting a new one so overlapping coroutines can't fight.
+    void StartPenaltyFeedback(int playerIndex, float seconds)
+    {
+        StopPopupFeedback(playerIndex);
+        penaltyFeedbackRoutines[playerIndex] = StartCoroutine(PenaltyFeedback(playerIndex, seconds));
+    }
+
+    void StartBonusFeedback(int playerIndex, float seconds)
+    {
+        StopPopupFeedback(playerIndex);
+        bonusFeedbackRoutines[playerIndex] = StartCoroutine(BonusFeedback(playerIndex, seconds));
+    }
+
+    void StopPopupFeedback(int playerIndex)
+    {
+        if (playerIndex < 0 || playerIndex > 1)
+            return;
+        if (penaltyFeedbackRoutines[playerIndex] != null)
+        {
+            StopCoroutine(penaltyFeedbackRoutines[playerIndex]);
+            penaltyFeedbackRoutines[playerIndex] = null;
+        }
+        if (bonusFeedbackRoutines[playerIndex] != null)
+        {
+            StopCoroutine(bonusFeedbackRoutines[playerIndex]);
+            bonusFeedbackRoutines[playerIndex] = null;
+        }
+    }
+
     IEnumerator PenaltyFeedback(int playerIndex, float seconds)
     {
         var popup = GetPenaltyPopup(playerIndex);
@@ -1049,6 +1134,7 @@ public class GameManager : MonoBehaviour
         }
         if (timer != null)
             timer.color = GetTimerDefaultColor(playerIndex);
+        penaltyFeedbackRoutines[playerIndex] = null;
     }
 
     IEnumerator BonusFeedback(int playerIndex, float seconds)
@@ -1070,6 +1156,7 @@ public class GameManager : MonoBehaviour
             SetHighlightPanelActive(popup, false);
             popup.color = playerIndex == 1 ? penaltyPopupDefaultColorP2 : penaltyPopupDefaultColorP1;
         }
+        bonusFeedbackRoutines[playerIndex] = null;
     }
 
     IEnumerator ShowEliminationBanner(int playerIndex)
@@ -1172,8 +1259,14 @@ public class GameManager : MonoBehaviour
 
         if (IsTwoPlayerMode)
         {
+            if (MobileControlsUI.TouchControlsActive)
+            {
+                controlsHintText.text = "Dodge Obstacles\nP1 left stick, P2 right stick\nTap II to pause";
+                return;
+            }
+
             controlsHintText.text = InputModeWatcher.Mode == InputMode.Gamepad
-                ? "Dodge Obstacles\nP1 WASD, P2 Gamepad\nEsc/Start pause"
+                ? "Dodge Obstacles\nP1 left stick, P2 right stick\nEsc/Start pause"
                 : "Dodge Obstacles\nP1 WASD, P2 Arrows\nEsc pause";
             return;
         }
@@ -1281,8 +1374,12 @@ public class GameManager : MonoBehaviour
     {
         IsGameActive = false;
         timeRemaining = 0f;
+        displayedTimer = 0f;
         if (IsTwoPlayerMode)
+        {
             timeRemaining2 = 0f;
+            displayedTimer2 = 0f;
+        }
         UpdateTimerDisplay();
 
         if (IsTwoPlayerMode)
@@ -1380,9 +1477,23 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    // Legacy no-arg overload: finish whichever vehicle is still mid exit-drive
+    // (must not assume Player 1 — P2 can finish first in 2P).
     public void OnVehicleExitComplete()
     {
-        OnVehicleExitComplete(player);
+        PlayerController exited = null;
+        if (players != null)
+        {
+            foreach (var p in players)
+            {
+                if (p != null && p.IsExiting)
+                {
+                    exited = p;
+                    break;
+                }
+            }
+        }
+        OnVehicleExitComplete(exited != null ? exited : player);
     }
 
     public void OnVehicleExitComplete(PlayerController exited)

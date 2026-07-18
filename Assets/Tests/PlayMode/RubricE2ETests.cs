@@ -109,7 +109,7 @@ public class RubricE2ETests
         yield return RubricE2ERecording.Begin("05_near_miss_bonus");
 
         yield return StartRunAndWaitUntilActive();
-        SetPrivateField(gameManager, "lastNearMissTime", -10f);
+        SetPrivateField(gameManager, "lastNearMissTime", new[] { -10f, -10f });
         float before = GetPrivateField<float>(gameManager, "timeRemaining");
 
         gameManager.OnNearMiss();

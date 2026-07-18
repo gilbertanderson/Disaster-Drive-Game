@@ -76,6 +76,13 @@ public class SpawnManager : MonoBehaviour
         FindWallRange();
         CacheMinRockFootprint();
         CacheSpawnX();
+        if (validRockVisuals == null || validRockVisuals.Length == 0)
+        {
+            Debug.LogWarning(
+                "SpawnManager: no usable rock visuals at runtime. " +
+                "Player builds cannot recover via AssetDatabase — assign rockVisuals on the scene SpawnManager.",
+                this);
+        }
         StartCoroutine(SpawnLoop());
     }
 
@@ -513,13 +520,18 @@ public class SpawnManager : MonoBehaviour
         return false;
     }
 
+    private const string RockVisualsResourceFolder = "RockVisuals";
+
     static GameObject LoadRockVisualAtPath(string path)
     {
 #if UNITY_EDITOR
-        return AssetDatabase.LoadAssetAtPath<GameObject>(path);
-#else
-        return null;
+        var fromEditor = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+        if (fromEditor != null)
+            return fromEditor;
 #endif
+        // Player builds (and editor fallback): Resources/RockVisuals/<name>
+        string fileName = System.IO.Path.GetFileNameWithoutExtension(path);
+        return Resources.Load<GameObject>(RockVisualsResourceFolder + "/" + fileName);
     }
 
     void EnsureRockVisualReferences()
@@ -538,6 +550,15 @@ public class SpawnManager : MonoBehaviour
             var prefab = LoadRockVisualAtPath(path);
             if (prefab != null && !loaded.Contains(prefab))
                 loaded.Add(prefab);
+        }
+
+        if (loaded.Count == 0)
+        {
+            foreach (var prefab in Resources.LoadAll<GameObject>(RockVisualsResourceFolder))
+            {
+                if (prefab != null && !loaded.Contains(prefab))
+                    loaded.Add(prefab);
+            }
         }
 
         return loaded.ToArray();

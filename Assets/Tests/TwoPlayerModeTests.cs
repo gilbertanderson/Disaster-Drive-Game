@@ -77,15 +77,18 @@ public class TwoPlayerModeTests
     [Test]
     public void OnVehicleCollision_ChargesRammerMoreThanVictim()
     {
+        // P1 at x=2 drives left toward stationary P2 at the origin — P1 is the rammer.
         player1Object.transform.position = new Vector3(2f, 0f, 0f);
         player2Object.transform.position = Vector3.zero;
-        SetPrivateProperty(player1, "CurrentMovementDirection", Vector3.right);
+        SetPrivateProperty(player1, "CurrentMovementDirection", Vector3.left);
         SetPrivateProperty(player2, "CurrentMovementDirection", Vector3.zero);
 
         gameManager.OnVehicleCollision(Vector3.zero, player1, player2);
 
-        Assert.That(GetPrivateField<float>(gameManager, "timeRemaining"), Is.EqualTo(26f).Within(0.001f));
-        Assert.That(GetPrivateField<float>(gameManager, "timeRemaining2"), Is.EqualTo(28f).Within(0.001f));
+        Assert.That(GetPrivateField<float>(gameManager, "timeRemaining"), Is.EqualTo(26f).Within(0.001f),
+            "The approaching player should take the rammer penalty (4s).");
+        Assert.That(GetPrivateField<float>(gameManager, "timeRemaining2"), Is.EqualTo(28f).Within(0.001f),
+            "The stationary player should take the victim penalty (2s).");
     }
 
     [Test]
@@ -297,6 +300,20 @@ public class TwoPlayerVehicleSelectorTests
         selector2.EnsureDistinctFrom(selector1);
 
         Assert.That(selector2.CurrentIndex, Is.Not.EqualTo(selector1.CurrentIndex));
+    }
+
+    [Test]
+    public void EnsureDistinctFrom_DoesNotRewriteSavedVehicleChoice()
+    {
+        Awaken(selector1);
+        Awaken(selector2);
+        PlayerPrefs.DeleteKey("VehicleIndex2");
+
+        selector2.EnsureDistinctFrom(selector1);
+
+        Assert.That(selector2.CurrentIndex, Is.Not.EqualTo(selector1.CurrentIndex));
+        Assert.IsFalse(PlayerPrefs.HasKey("VehicleIndex2"),
+            "Auto-dedupe when enabling 2P must not persist over the player's saved pick.");
     }
 
     [Test]

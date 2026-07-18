@@ -3,9 +3,10 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 // Covers the binding matrix BuildMovementAction assembles per control scheme:
-// which keyboard sets are live and whether the gamepad (left stick + d-pad,
-// also fed by the on-screen touch stick) drives movement. Start never runs in
-// Edit Mode, but ApplyControlScheme is self-contained and enables the action.
+// which keyboard sets are live and which gamepad stick drives movement.
+// 1P: left stick + d-pad. 2P: left stick → P1, right stick → P2 (same split as
+// the on-screen touch sticks). Start never runs in Edit Mode, but
+// ApplyControlScheme is self-contained and enables the action.
 public class PlayerControllerControlSchemeTests : InputTestFixture
 {
     private GameObject playerObject;
@@ -26,6 +27,7 @@ public class PlayerControllerControlSchemeTests : InputTestFixture
     public void TearDownPlayer()
     {
         player.movementAction?.Disable();
+        player.movementAction?.Dispose();
         Object.DestroyImmediate(playerObject);
     }
 
@@ -73,9 +75,9 @@ public class PlayerControllerControlSchemeTests : InputTestFixture
     }
 
     [Test]
-    public void ArrowsAndGamepad_StickDpadAndArrowsWork_WasdIgnored()
+    public void ArrowsAndRightStick_RightStickAndArrowsWork_WasdAndLeftStickIgnored()
     {
-        player.ApplyControlScheme(PlayerController.ControlScheme.ArrowsAndGamepad);
+        player.ApplyControlScheme(PlayerController.ControlScheme.ArrowsAndRightStick);
 
         Press(keyboard.wKey);
         Assert.That(ReadMovement().magnitude, Is.LessThan(0.01f),
@@ -87,23 +89,36 @@ public class PlayerControllerControlSchemeTests : InputTestFixture
         Release(keyboard.upArrowKey);
 
         Set(gamepad.leftStick, Vector2.left);
-        Assert.That(ReadMovement().x, Is.LessThan(-0.9f), "The left stick should steer Player 2.");
+        Assert.That(ReadMovement().magnitude, Is.LessThan(0.01f),
+            "The left stick belongs to Player 1 and must not drive Player 2.");
         Set(gamepad.leftStick, Vector2.zero);
+
+        Set(gamepad.rightStick, Vector2.left);
+        Assert.That(ReadMovement().x, Is.LessThan(-0.9f), "The right stick should steer Player 2.");
+        Set(gamepad.rightStick, Vector2.zero);
 
         Press(gamepad.dpad.right);
         Assert.That(ReadMovement().x, Is.GreaterThan(0.9f), "The d-pad should steer Player 2.");
     }
 
     [Test]
-    public void WasdOnly_IgnoresGamepadAndArrows()
+    public void WasdAndLeftStick_LeftStickWorks_ArrowsAndRightStickIgnored()
     {
-        player.ApplyControlScheme(PlayerController.ControlScheme.WasdOnly);
+        player.ApplyControlScheme(PlayerController.ControlScheme.WasdAndLeftStick);
 
-        Set(gamepad.leftStick, Vector2.right);
+        Set(gamepad.rightStick, Vector2.right);
         Press(gamepad.dpad.right);
         Press(keyboard.rightArrowKey);
         Assert.That(ReadMovement().magnitude, Is.LessThan(0.01f),
-            "The pad belongs to Player 2 in two-player mode and must not drive Player 1.");
+            "Arrows, d-pad, and the right stick belong to Player 2 and must not drive Player 1.");
+        Release(keyboard.rightArrowKey);
+        Release(gamepad.dpad.right);
+        Set(gamepad.rightStick, Vector2.zero);
+
+        Set(gamepad.leftStick, Vector2.right);
+        Assert.That(ReadMovement().x, Is.GreaterThan(0.9f),
+            "The left stick should steer Player 1 in two-player mode.");
+        Set(gamepad.leftStick, Vector2.zero);
 
         Press(keyboard.dKey);
         Assert.That(ReadMovement().x, Is.GreaterThan(0.9f), "WASD should still steer Player 1.");
@@ -115,6 +130,7 @@ public class PlayerControllerControlSchemeTests : InputTestFixture
         player.ApplyControlScheme(PlayerController.ControlScheme.ArrowsOnly);
 
         Set(gamepad.leftStick, Vector2.right);
+        Set(gamepad.rightStick, Vector2.right);
         Press(keyboard.dKey);
         Assert.That(ReadMovement().magnitude, Is.LessThan(0.01f));
 
