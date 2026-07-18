@@ -528,6 +528,100 @@ public class VehicleExitTests
         Object.DestroyImmediate(nearMissManagerObject);
     }
 
+    [Test]
+    public void MoveDown_NearMissIgnoresEliminatedCloserPlayerAndCreditsSurvivor()
+    {
+        SetPrivateProperty(gameManager, "IsGameActive", true);
+        SetPrivateProperty(gameManager, "IsPaused", false);
+        SetPrivateProperty(gameManager, "IsTwoPlayerMode", true);
+        SetPrivateField(gameManager, "timeRemaining", 10f);
+        SetPrivateField(gameManager, "timeRemaining2", 10f);
+        SetPrivateField(gameManager, "lastNearMissTime", new[] { -10f, -10f });
+        ((bool[])GetPrivateField(gameManager, "eliminated"))[0] = true;
+
+        var p1Object = new GameObject("EliminatedPlayer");
+        var p1 = p1Object.AddComponent<PlayerController>();
+        p1.playerIndex = 0;
+        p1Object.transform.position = new Vector3(0f, 0f, 0.1f);
+
+        var p2Object = new GameObject("SurvivingPlayer");
+        var p2 = p2Object.AddComponent<PlayerController>();
+        p2.playerIndex = 1;
+        p2Object.transform.position = new Vector3(0f, 0f, 1.4f);
+        SetPrivateField(gameManager, "players", new[] { p1, p2 });
+
+        var rockObject = new GameObject("Rock");
+        var rb = rockObject.AddComponent<Rigidbody>();
+        rb.useGravity = false;
+        rb.position = new Vector3(2f, 0f, 1.2f);
+        var mover = rockObject.AddComponent<MoveDown>();
+        SetPrivateField(mover, "gameManager", gameManager);
+        SetPrivateField(mover, "objectRb", rb);
+        SetPrivateField(mover, "players", new[] { p1, p2 });
+        SetPrivateField(mover, "moveDirection", Vector3.right);
+        SetPrivateField(mover, "nearMissDistance", 2f);
+        SetPrivateField(mover, "nearMissChecked", false);
+        SetPrivateField(mover, "hitPlayer", false);
+
+        typeof(MoveDown).GetMethod("TryAwardNearMiss", BindingFlags.Instance | BindingFlags.NonPublic)
+            .Invoke(mover, null);
+
+        Assert.That((float)GetPrivateField(gameManager, "timeRemaining"), Is.EqualTo(10f).Within(0.001f),
+            "The eliminated player must not receive the close-dodge bonus.");
+        Assert.That((float)GetPrivateField(gameManager, "timeRemaining2"), Is.EqualTo(12f).Within(0.001f),
+            "The rock should credit the closest still-racing player it has passed.");
+        Assert.That((bool)GetPrivateField(mover, "nearMissChecked"), Is.True);
+
+        Object.DestroyImmediate(rockObject);
+        Object.DestroyImmediate(p2Object);
+        Object.DestroyImmediate(p1Object);
+    }
+
+    [Test]
+    public void MoveDown_RegisterHitIgnoresEliminatedVehicleSoSurvivorCanStillBeHit()
+    {
+        SetPrivateProperty(gameManager, "IsGameActive", true);
+        SetPrivateProperty(gameManager, "IsPaused", false);
+        SetPrivateProperty(gameManager, "IsTwoPlayerMode", true);
+        SetPrivateField(gameManager, "timeRemaining", 30f);
+        SetPrivateField(gameManager, "timeRemaining2", 30f);
+        ((bool[])GetPrivateField(gameManager, "eliminated"))[0] = true;
+
+        var p1Object = new GameObject("EliminatedPlayer");
+        var p1 = p1Object.AddComponent<PlayerController>();
+        p1.playerIndex = 0;
+
+        var p2Object = new GameObject("SurvivingPlayer");
+        var p2 = p2Object.AddComponent<PlayerController>();
+        p2.playerIndex = 1;
+        SetPrivateField(gameManager, "players", new[] { p1, p2 });
+
+        var rockObject = new GameObject("Rock");
+        var rb = rockObject.AddComponent<Rigidbody>();
+        rb.useGravity = false;
+        var mover = rockObject.AddComponent<MoveDown>();
+        mover.speed = 5f;
+        SetPrivateField(mover, "gameManager", gameManager);
+        SetPrivateField(mover, "objectRb", rb);
+        SetPrivateField(mover, "moveDirection", Vector3.right);
+
+        mover.RegisterPlayerHit(Vector3.zero, p1Object.transform);
+
+        Assert.That((bool)GetPrivateField(mover, "hitPlayer"), Is.False,
+            "An eliminated vehicle should not consume the rock's one-shot hit state.");
+        Assert.That((float)GetPrivateField(gameManager, "timeRemaining"), Is.EqualTo(30f).Within(0.001f));
+
+        mover.RegisterPlayerHit(Vector3.zero, p2Object.transform);
+
+        Assert.That((bool)GetPrivateField(mover, "hitPlayer"), Is.True);
+        Assert.That((float)GetPrivateField(gameManager, "timeRemaining2"), Is.EqualTo(25f).Within(0.001f),
+            "The survivor should still take the rock penalty after the eliminated car was ignored.");
+
+        Object.DestroyImmediate(rockObject);
+        Object.DestroyImmediate(p2Object);
+        Object.DestroyImmediate(p1Object);
+    }
+
     private static void InvokeFixedUpdate(MoveDown mover)
     {
         typeof(MoveDown).GetMethod("FixedUpdate", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)

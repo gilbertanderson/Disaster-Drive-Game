@@ -33,6 +33,7 @@ public class InputModeWatcherTests : InputTestFixture
         TestReflectionHelpers.SetPrivateStaticField(typeof(InputModeWatcher), "ModeChanged", null);
         TestReflectionHelpers.GetPrivateStaticField<HashSet<InputDevice>>(
             typeof(InputModeWatcher), "ignoredDevices").Clear();
+        TestReflectionHelpers.SetPrivateStaticField(typeof(MobileControlsUI), "touchControlsPref", int.MinValue);
     }
 
     // Awake and Update don't run automatically for ordinary scripts in Edit Mode,
@@ -172,6 +173,21 @@ public class InputModeWatcherTests : InputTestFixture
 
         Assert.That(InputModeWatcher.Mode, Is.EqualTo(InputMode.Gamepad),
             "A real pad should still switch the mode while a virtual pad is ignored.");
+    }
+
+    [Test]
+    public void TouchControlsActive_BlocksVirtualGamepadFromSwitchingMode()
+    {
+        CreateWatcher();
+        TestReflectionHelpers.SetStaticProperty(typeof(InputModeWatcher), "Mode", InputMode.Touch);
+        TestReflectionHelpers.SetPrivateStaticField(typeof(MobileControlsUI), "touchControlsPref", 1);
+
+        var virtualPad = InputSystem.AddDevice<Gamepad>();
+        Set(virtualPad.leftStick, Vector2.right);
+        PumpWatcher();
+
+        Assert.That(InputModeWatcher.Mode, Is.EqualTo(InputMode.Touch),
+            "Touch mode with active on-screen controls must not flip to Gamepad from a virtual stick.");
     }
 
     [Test]

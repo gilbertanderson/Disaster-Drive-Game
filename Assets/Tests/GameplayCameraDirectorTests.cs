@@ -94,6 +94,20 @@ public class GameplayCameraDirectorTests
     }
 
     [Test]
+    public void ApplyRearView_SwitchesCameraPose()
+    {
+        var rearAnchor = CreateAnchor("IntroCameraRear", rigObject.transform,
+            new Vector3(0f, 4.2f, 8.5f), Quaternion.Euler(38f, 180f, 0f));
+        SetPrivateField(director, "rearAnchor", rearAnchor.transform);
+        director.CacheRearPose();
+
+        director.ApplyRearView(true);
+
+        Assert.That(director.RearViewActive, Is.True);
+        Assert.That(Vector3.Distance(cameraObject.transform.position, rearAnchor.transform.position), Is.LessThan(0.01f));
+    }
+
+    [Test]
     public void PlayIntroSequence_SyncsCameraShakeRestPosition()
     {
         director.SimulateFullIntro();
