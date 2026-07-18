@@ -8,24 +8,24 @@ using UnityEngine.InputSystem.OnScreen;
 using UnityEngine.UI;
 
 // On-screen touch controls: a virtual stick (bottom-left) and a persistent
-// top-left stack — controls hint and pause button. The stick is an Input
-// System OnScreenStick that feeds <Gamepad>/leftStick, so PlayerController's
-// gamepad binding drives the vehicle with no extra plumbing. Everything is
-// built in code at runtime; the scene is untouched.
+// top-left controls hint. The stick is an Input System OnScreenStick that
+// feeds <Gamepad>/leftStick, so PlayerController's gamepad binding drives the
+// vehicle with no extra plumbing. Everything is built in code at runtime;
+// the scene is untouched. Pausing on touch devices is done by tapping the
+// timer HUD (see GameManager/TimerPauseTapHandler), so this component has no
+// pause button of its own.
 //
 // Whether the stick appears is decided by the TOUCH CONTROLS toggle in the
 // pause menu (a runtime-built pause-panel button, see
 // GameManager.EnsureRuntimeUiRefs, which calls ToggleTouchControlsPref here):
 // until the player uses it, the controls follow Touch mode automatically (the
 // pre-toggle behavior); once toggled, the explicit on/off choice wins and is
-// persisted. The pause button is independent of the toggle: it stays
-// available for every input device whenever a run is active or paused.
+// persisted.
 public class MobileControlsUI : MonoBehaviour
 {
     private const float StickAreaSize = 340f;
     private const float StickHandleSize = 130f;
     private const float StickMovementRange = 105f;
-    private const float PauseButtonSize = 110f;
 
     public const string TouchControlsPrefKey = "TouchControlsEnabled";
     private const int PrefUnloaded = int.MinValue; // Sentinel: PlayerPrefs not read yet
@@ -57,7 +57,6 @@ public class MobileControlsUI : MonoBehaviour
 
     private GameManager gameManager;
     private GameObject stickRoot;
-    private GameObject pauseRoot;
     private GameObject hintRoot;
     private TextMeshProUGUI hintLabel;
     private OnScreenStick onScreenStick;
@@ -89,7 +88,6 @@ public class MobileControlsUI : MonoBehaviour
         EnsureEventSystem();
         BuildUI();
         SetShown(false);
-        if (pauseRoot != null) pauseRoot.SetActive(false);
         if (hintRoot != null) hintRoot.SetActive(false);
     }
 
@@ -114,13 +112,6 @@ public class MobileControlsUI : MonoBehaviour
 
         bool show = TouchControlsActive && gameManager.IsGameActive;
         SetShown(show);
-
-        // The pause button is part of the persistent top-left stack: reachable
-        // for any input device during a run and while paused (the same button
-        // resumes), independent of the touch-controls toggle.
-        bool showPause = gameManager.IsGameActive || gameManager.IsPaused;
-        if (pauseRoot != null && pauseRoot.activeSelf != showPause)
-            pauseRoot.SetActive(showPause);
 
         // The stick's virtual gamepad device only exists while the stick is
         // enabled; register it as ignored as soon as it resolves so touch drags
@@ -181,7 +172,7 @@ public class MobileControlsUI : MonoBehaviour
                 : "P1 WASD, P2 arrows\nEsc pauses";
         }
         if (controlsOn)
-            return "Drag stick to steer\nTap II or the timer to pause";
+            return "Drag stick to steer\nTap the timer to pause";
         if (mode == InputMode.Touch)
             return "Touch controls are off\nTap the timer to pause";
         return mode == InputMode.Gamepad
@@ -241,24 +232,6 @@ public class MobileControlsUI : MonoBehaviour
         onScreenStick.controlPath = "<Gamepad>/leftStick";
         onScreenStick.movementRange = StickMovementRange;
 
-        // --- Pause button, top-left under the hints (persistent during runs) ---
-        pauseRoot = new GameObject("PauseButton", typeof(RectTransform), typeof(Image), typeof(Button));
-        var pauseRect = (RectTransform)pauseRoot.transform;
-        pauseRect.SetParent(canvasGo.transform, false);
-        pauseRect.anchorMin = pauseRect.anchorMax = new Vector2(0f, 1f);
-        pauseRect.pivot = new Vector2(0.5f, 0.5f);
-        pauseRect.anchoredPosition = new Vector2(220f, -330f);
-        pauseRect.sizeDelta = new Vector2(PauseButtonSize, PauseButtonSize);
-        var pauseImage = pauseRoot.GetComponent<Image>();
-        pauseImage.sprite = circle;
-        pauseImage.color = new Color(0f, 0f, 0f, 0.35f);
-        pauseRoot.GetComponent<Button>().onClick.AddListener(() =>
-        {
-            if (gameManager != null)
-                gameManager.TogglePause();
-        });
-        AddLabel(pauseRect, "II", 48f, TextAlignmentOptions.Center);
-
         // --- Controller hints, top-left (same spot as the start screen's own
         // hint text) ---
         hintRoot = new GameObject("ControlsHint", typeof(RectTransform), typeof(TextMeshProUGUI));
@@ -273,25 +246,6 @@ public class MobileControlsUI : MonoBehaviour
         hintLabel.alignment = TextAlignmentOptions.TopLeft;
         hintLabel.color = new Color(1f, 1f, 1f, 0.75f);
         hintLabel.raycastTarget = false;
-    }
-
-    private static TextMeshProUGUI AddLabel(RectTransform parent, string text,
-        float fontSize, TextAlignmentOptions alignment)
-    {
-        var labelGo = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
-        var labelRect = (RectTransform)labelGo.transform;
-        labelRect.SetParent(parent, false);
-        labelRect.anchorMin = Vector2.zero;
-        labelRect.anchorMax = Vector2.one;
-        labelRect.offsetMin = labelRect.offsetMax = Vector2.zero;
-        var label = labelGo.GetComponent<TextMeshProUGUI>();
-        label.text = text;
-        label.fontStyle = FontStyles.Bold;
-        label.fontSize = fontSize;
-        label.alignment = alignment;
-        label.color = new Color(1f, 1f, 1f, 0.85f);
-        label.raycastTarget = false;
-        return label;
     }
 
     // Anti-aliased filled circle so the controls need no sprite assets.

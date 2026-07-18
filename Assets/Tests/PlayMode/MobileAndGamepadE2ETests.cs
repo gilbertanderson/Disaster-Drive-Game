@@ -189,13 +189,10 @@ public class MobileAndGamepadE2ETests : InputTestFixture
         Assert.That(mobileControls, Is.Not.Null, "MobileControlsUI should self-bootstrap at runtime.");
 
         var stickRoot = GetPrivateField<GameObject>(mobileControls, "stickRoot");
-        var pauseRoot = GetPrivateField<GameObject>(mobileControls, "pauseRoot");
         yield return InputSimulationHelpers.WaitUntilOrTimeout(() => stickRoot.activeInHierarchy, WaitTimeout);
 
         Assert.That(stickRoot.activeInHierarchy, Is.True,
             "The on-screen stick should appear in Touch mode during an active run.");
-        Assert.That(pauseRoot.activeInHierarchy, Is.True,
-            "The on-screen pause button should appear in Touch mode during an active run.");
     }
 
     [UnityTest]
@@ -214,8 +211,6 @@ public class MobileAndGamepadE2ETests : InputTestFixture
         Assert.That(mobileControls, Is.Not.Null);
         Assert.That(GetPrivateField<GameObject>(mobileControls, "stickRoot").activeInHierarchy, Is.False,
             "The on-screen stick must stay hidden while playing with the keyboard.");
-        Assert.That(GetPrivateField<GameObject>(mobileControls, "pauseRoot").activeInHierarchy, Is.True,
-            "The top-left pause button persists during a run regardless of input device.");
     }
 
     [UnityTest]
@@ -248,31 +243,28 @@ public class MobileAndGamepadE2ETests : InputTestFixture
             "Driving with the on-screen stick must not flip the input mode away from Touch.");
     }
 
+    // A real screen-space touch through the EventSystem/GraphicRaycaster onto
+    // the timer HUD — the on-screen pause button was removed in favor of
+    // tapping the timer directly (see TimerPauseTapHandler).
     [UnityTest]
-    public IEnumerator MobilePauseButton_TogglesPause_AndStaysReachableWhilePaused()
+    public IEnumerator TouchTapOnTimer_TogglesPause_AndStaysReachableWhilePaused()
     {
         yield return StartRunAndWaitUntilActive();
 
-        yield return InputSimulationHelpers.Tap(this, ScreenCenter());
+        var timerText = GetPrivateField<TMP_Text>(gameManager, "timerText");
+        Assert.That(timerText, Is.Not.Null, "timerText should be wired in the scene.");
+        Vector2 timerScreenPos = RectTransformUtility.WorldToScreenPoint(null, timerText.rectTransform.position);
 
-        var mobileControls = Object.FindAnyObjectByType<MobileControlsUI>();
-        var pauseRoot = GetPrivateField<GameObject>(mobileControls, "pauseRoot");
-        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => pauseRoot.activeInHierarchy, WaitTimeout);
-        Assert.That(pauseRoot.activeInHierarchy, Is.True);
-
-        var pauseButton = pauseRoot.GetComponent<Button>();
-        pauseButton.onClick.Invoke();
+        yield return InputSimulationHelpers.Tap(this, timerScreenPos);
         yield return null;
 
-        Assert.That(gameManager.IsPaused, Is.True, "The on-screen pause button should pause the run.");
+        Assert.That(gameManager.IsPaused, Is.True, "Tapping the timer should pause the run.");
         Assert.That(Time.timeScale, Is.EqualTo(0f).Within(0.001f));
-        Assert.That(pauseRoot.activeInHierarchy, Is.True,
-            "The pause button must stay visible while paused so the same button can resume.");
 
-        pauseButton.onClick.Invoke();
+        yield return InputSimulationHelpers.Tap(this, timerScreenPos);
         yield return null;
 
-        Assert.That(gameManager.IsPaused, Is.False, "The same button should resume the run.");
+        Assert.That(gameManager.IsPaused, Is.False, "Tapping the timer again should resume the run.");
         Assert.That(Time.timeScale, Is.EqualTo(1f).Within(0.001f));
     }
 
@@ -298,7 +290,6 @@ public class MobileAndGamepadE2ETests : InputTestFixture
 
         var mobileControls = Object.FindAnyObjectByType<MobileControlsUI>();
         var stickRoot = GetPrivateField<GameObject>(mobileControls, "stickRoot");
-        var pauseRoot = GetPrivateField<GameObject>(mobileControls, "pauseRoot");
         yield return InputSimulationHelpers.WaitUntilOrTimeout(() => stickRoot.activeInHierarchy, WaitTimeout);
         Assert.That(stickRoot.activeInHierarchy, Is.True);
 
@@ -315,8 +306,6 @@ public class MobileAndGamepadE2ETests : InputTestFixture
 
         Assert.That(stickRoot.activeInHierarchy, Is.False,
             "Toggling touch controls off should hide the on-screen stick even in Touch mode.");
-        Assert.That(pauseRoot.activeInHierarchy, Is.True,
-            "The top-left pause button persists even with touch controls toggled off.");
         Assert.That(InputModeWatcher.Mode, Is.EqualTo(InputMode.Touch),
             "The toggle changes controls visibility, not the detected input mode.");
         Assert.That(PlayerPrefs.GetInt(MobileControlsUI.TouchControlsPrefKey, -1), Is.EqualTo(0),
