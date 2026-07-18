@@ -74,14 +74,30 @@ public class InputModeWatcher : MonoBehaviour
             return;
         }
 
-        foreach (var pad in Gamepad.all)
+        // While touch controls are active, a virtual gamepad from the on-screen
+        // stick may actuate before MobileControlsUI registers it as ignored.
+        // Stay in Touch mode until a non-ignored pad is seen.
+        if (Mode == InputMode.Touch && MobileControlsUI.TouchControlsActive)
         {
-            if (ignoredDevices.Contains(pad))
-                continue;
-            if (GamepadActuated(pad))
+            foreach (var pad in Gamepad.all)
             {
-                SetMode(InputMode.Gamepad);
-                return;
+                if (ignoredDevices.Contains(pad))
+                    continue;
+                if (GamepadActuated(pad))
+                    return;
+            }
+        }
+        else
+        {
+            foreach (var pad in Gamepad.all)
+            {
+                if (ignoredDevices.Contains(pad))
+                    continue;
+                if (GamepadActuated(pad))
+                {
+                    SetMode(InputMode.Gamepad);
+                    return;
+                }
             }
         }
 

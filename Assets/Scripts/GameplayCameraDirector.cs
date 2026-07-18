@@ -2,16 +2,21 @@ using System.Collections.Generic;
 using UnityEngine;
 
 // Drives the start-of-run intro camera: a head-on shot of the vehicles held through
-// 3-2-1, then a swoop up to the top-down gameplay pose on GO.
+// 3-2-1, then a swoop up to the top-down gameplay pose on GO. Also owns the
+// optional rear-view chase pose toggled from the pause menu.
 public class GameplayCameraDirector : MonoBehaviour
 {
     [SerializeField] private Transform introRig;
     [SerializeField] private Transform frontAnchor;
+    [SerializeField] private Transform rearAnchor;
     [SerializeField] private CameraShake cameraShake;
     [SerializeField] private float beatDuration = 0.8f;
 
     private Vector3 gameplayPosition;
     private Quaternion gameplayRotation;
+    private Vector3 rearPosition;
+    private Quaternion rearRotation;
+    private bool rearViewActive;
     private bool introActive;
     private bool introComplete;
     private int currentBeat = -1;
@@ -22,11 +27,20 @@ public class GameplayCameraDirector : MonoBehaviour
     private Quaternion beatTargetRotation;
     private bool beatInProgress;
 
+    public bool RearViewActive => rearViewActive;
+
     void Awake()
     {
         CacheGameplayPose();
+        CacheRearPose();
         if (cameraShake == null)
             cameraShake = GetComponent<CameraShake>();
+    }
+
+    void Start()
+    {
+        if (RearViewManager.RearViewEnabled)
+            ApplyRearView(true);
     }
 
     void Update()
@@ -41,9 +55,41 @@ public class GameplayCameraDirector : MonoBehaviour
         gameplayRotation = transform.rotation;
     }
 
+    public void CacheRearPose()
+    {
+        if (rearAnchor != null)
+        {
+            rearPosition = rearAnchor.position;
+            rearRotation = rearAnchor.rotation;
+            return;
+        }
+
+        // Fallback when the scene anchor is missing: low chase cam behind the
+        // playfield looking toward the vehicles (opposite the intro front shot).
+        rearPosition = gameplayPosition + new Vector3(-10f, -6f, 0f);
+        rearRotation = Quaternion.Euler(28f, 90f, 0f);
+    }
+
+    public void ApplyRearView(bool rear)
+    {
+        if (introActive)
+            return;
+
+        rearViewActive = rear;
+        CacheRearPose();
+
+        Vector3 targetPos = rear ? rearPosition : gameplayPosition;
+        Quaternion targetRot = rear ? rearRotation : gameplayRotation;
+        transform.SetPositionAndRotation(targetPos, targetRot);
+
+        if (cameraShake != null)
+            cameraShake.SyncRestPosition();
+    }
+
     public void StartIntroSequence(IReadOnlyList<Transform> vehicleRoots)
     {
         CacheGameplayPose();
+        CacheRearPose();
 
         if (cameraShake != null)
             cameraShake.StopAndReset();
@@ -145,6 +191,11 @@ public class GameplayCameraDirector : MonoBehaviour
             position = frontAnchor.position;
             rotation = frontAnchor.rotation;
         }
+        else if (rearViewActive)
+        {
+            position = rearPosition;
+            rotation = rearRotation;
+        }
         else
         {
             position = gameplayPosition;
@@ -168,6 +219,7 @@ public class GameplayCameraDirector : MonoBehaviour
 
         if (currentBeat == 3)
         {
+            introActive = false;
             introComplete = true;
             if (cameraShake != null)
                 cameraShake.SyncRestPosition();

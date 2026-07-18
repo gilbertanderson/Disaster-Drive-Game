@@ -4,6 +4,7 @@ using NUnit.Framework;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.OnScreen;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using UnityEngine.UI;
@@ -23,6 +24,12 @@ public class MobileAndGamepadE2ETests : InputTestFixture
     // StartGame runs a 3-2-1-GO countdown (4 x 0.8s beats) plus a camera intro
     // before IsGameActive flips, so "the run started" needs a generous ceiling.
     const float RunStartTimeout = 15f;
+
+    static bool StickVisible(GameObject stickRoot) =>
+        stickRoot != null && stickRoot.GetComponent<CanvasGroup>().alpha > 0.99f;
+
+    static bool StickHidden(GameObject stickRoot) =>
+        stickRoot == null || stickRoot.GetComponent<CanvasGroup>().alpha < 0.01f;
 
     GameManager gameManager;
     PlayerController player;
@@ -87,12 +94,15 @@ public class MobileAndGamepadE2ETests : InputTestFixture
         PlayerPrefs.DeleteKey(MobileControlsUI.TouchControlsPrefKey);
         SetPrivateStaticField(typeof(MobileControlsUI), "touchControlsPref", int.MinValue);
 
+        PlayerPrefs.DeleteKey(RearViewManager.RearViewPrefKey);
+        SetPrivateStaticField(typeof(RearViewManager), "rearViewPref", int.MinValue);
+
         // Hide the on-screen controls while this test's input system still
         // exists, so the stick removes its virtual gamepad cleanly before
         // InputTestFixture restores the previous input state.
         var mobileControls = Object.FindAnyObjectByType<MobileControlsUI>();
         if (mobileControls != null)
-            InvokePrivate(mobileControls, "SetShown", false);
+            InvokePrivate(mobileControls, "SetLeftStickShown", false);
     }
 
     IEnumerator StartRunAndWaitUntilActive()
@@ -189,9 +199,9 @@ public class MobileAndGamepadE2ETests : InputTestFixture
         Assert.That(mobileControls, Is.Not.Null, "MobileControlsUI should self-bootstrap at runtime.");
 
         var stickRoot = GetPrivateField<GameObject>(mobileControls, "stickRoot");
-        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => stickRoot.activeInHierarchy, WaitTimeout);
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => StickVisible(stickRoot), WaitTimeout);
 
-        Assert.That(stickRoot.activeInHierarchy, Is.True,
+        Assert.That(StickVisible(stickRoot), Is.True,
             "The on-screen stick should appear in Touch mode during an active run.");
     }
 
@@ -209,7 +219,7 @@ public class MobileAndGamepadE2ETests : InputTestFixture
 
         var mobileControls = Object.FindAnyObjectByType<MobileControlsUI>();
         Assert.That(mobileControls, Is.Not.Null);
-        Assert.That(GetPrivateField<GameObject>(mobileControls, "stickRoot").activeInHierarchy, Is.False,
+        Assert.That(StickHidden(GetPrivateField<GameObject>(mobileControls, "stickRoot")), Is.True,
             "The on-screen stick must stay hidden while playing with the keyboard.");
     }
 
@@ -222,20 +232,23 @@ public class MobileAndGamepadE2ETests : InputTestFixture
 
         var mobileControls = Object.FindAnyObjectByType<MobileControlsUI>();
         var stickRoot = GetPrivateField<GameObject>(mobileControls, "stickRoot");
-        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => stickRoot.activeInHierarchy, WaitTimeout);
-        Assert.That(stickRoot.activeInHierarchy, Is.True);
+        var onScreenStick = GetPrivateField<OnScreenStick>(mobileControls, "onScreenStick");
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(
+            () => stickRoot.GetComponent<CanvasGroup>().alpha > 0.99f, WaitTimeout);
+        Assert.That(stickRoot.GetComponent<CanvasGroup>().alpha, Is.GreaterThan(0.99f));
 
         // The stick's virtual gamepad device is created when the stick becomes
         // visible; wait until MobileControlsUI has registered it as ignored so
         // the drag below can't be misread as real gamepad input.
         yield return InputSimulationHelpers.WaitUntilOrTimeout(
-            () => GetPrivateField<bool>(mobileControls, "stickDeviceIgnored"), WaitTimeout);
-        Assert.That(GetPrivateField<bool>(mobileControls, "stickDeviceIgnored"), Is.True,
+            () => onScreenStick != null && onScreenStick.control != null
+                && InputModeWatcher.IsDeviceIgnored(onScreenStick.control.device), WaitTimeout);
+        Assert.That(onScreenStick.control != null, Is.True);
+        Assert.That(InputModeWatcher.IsDeviceIgnored(onScreenStick.control.device), Is.True,
             "MobileControlsUI should register the stick's virtual device with InputModeWatcher.");
 
-        var handle = stickRoot.transform.Find("StickHandle").gameObject;
         Vector3 startPos = player.transform.position;
-        yield return InputSimulationHelpers.DragOnScreenStick(handle, new Vector2(400f, 0f), 0.8f);
+        yield return InputSimulationHelpers.DragOnScreenStick(stickRoot, new Vector2(400f, 0f), 0.8f);
 
         Assert.That(player.transform.position.x, Is.GreaterThan(startPos.x + 0.1f),
             "Vehicle should move right when the on-screen stick is dragged right.");
@@ -290,8 +303,8 @@ public class MobileAndGamepadE2ETests : InputTestFixture
 
         var mobileControls = Object.FindAnyObjectByType<MobileControlsUI>();
         var stickRoot = GetPrivateField<GameObject>(mobileControls, "stickRoot");
-        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => stickRoot.activeInHierarchy, WaitTimeout);
-        Assert.That(stickRoot.activeInHierarchy, Is.True);
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => StickVisible(stickRoot), WaitTimeout);
+        Assert.That(StickVisible(stickRoot), Is.True);
 
         gameManager.TogglePause();
         yield return null;
@@ -302,9 +315,9 @@ public class MobileAndGamepadE2ETests : InputTestFixture
             "The touch-controls toggle should be visible in the open pause menu.");
 
         toggleButton.onClick.Invoke();
-        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => !stickRoot.activeInHierarchy, WaitTimeout);
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => StickHidden(stickRoot), WaitTimeout);
 
-        Assert.That(stickRoot.activeInHierarchy, Is.False,
+        Assert.That(StickHidden(stickRoot), Is.True,
             "Toggling touch controls off should hide the on-screen stick even in Touch mode.");
         Assert.That(InputModeWatcher.Mode, Is.EqualTo(InputMode.Touch),
             "The toggle changes controls visibility, not the detected input mode.");
@@ -312,9 +325,9 @@ public class MobileAndGamepadE2ETests : InputTestFixture
             "The explicit off choice should be persisted in PlayerPrefs.");
 
         toggleButton.onClick.Invoke();
-        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => stickRoot.activeInHierarchy, WaitTimeout);
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => StickVisible(stickRoot), WaitTimeout);
 
-        Assert.That(stickRoot.activeInHierarchy, Is.True,
+        Assert.That(StickVisible(stickRoot), Is.True,
             "Toggling touch controls back on should re-show the on-screen stick.");
         Assert.That(PlayerPrefs.GetInt(MobileControlsUI.TouchControlsPrefKey, -1), Is.EqualTo(1),
             "The explicit on choice should be persisted in PlayerPrefs.");
@@ -336,16 +349,16 @@ public class MobileAndGamepadE2ETests : InputTestFixture
 
         var mobileControls = Object.FindAnyObjectByType<MobileControlsUI>();
         var stickRoot = GetPrivateField<GameObject>(mobileControls, "stickRoot");
-        Assert.That(stickRoot.activeInHierarchy, Is.False);
+        Assert.That(StickHidden(stickRoot), Is.True);
 
         gameManager.TogglePause();
         yield return null;
         var toggleButton = FindPauseMenuTouchControlsButton();
         toggleButton.onClick.Invoke();
         gameManager.TogglePause();
-        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => stickRoot.activeInHierarchy, WaitTimeout);
+        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => StickVisible(stickRoot), WaitTimeout);
 
-        Assert.That(stickRoot.activeInHierarchy, Is.True,
+        Assert.That(StickVisible(stickRoot), Is.True,
             "Forcing touch controls on should show the stick regardless of input mode.");
         Assert.That(InputModeWatcher.Mode, Is.EqualTo(InputMode.Keyboard),
             "Forcing touch controls on must not flip the detected input mode.");
