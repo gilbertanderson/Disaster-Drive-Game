@@ -20,10 +20,11 @@ The project uses the new Input System, URP-compatible lighting, and keyboard-dri
 1. Press **Play** in the Unity Editor.
 2. On the start screen, pick a vehicle with **&lt;** / **&gt;** (or **A** / **D**).
 3. Click **Drive** to begin a run.
-4. Steer with **WASD** or **arrow keys** (1P). In **2 Players** mode: P1 uses WASD / left stick, P2 uses arrows / right stick; on touch, left and right on-screen sticks match that split. Avoid rocks (each hit costs time).
+4. Steer with **WASD** or **arrow keys**; avoid rocks (each hit costs time).
 5. Skim past rocks without hitting for a **+2s** near-miss bonus (with sound feedback).
-6. Press **Esc** to pause (credits appear in the top-right of the pause overlay).
-7. When time runs out, the vehicle drives off screen, then the game over panel appears — click **Retry** to reload.
+6. Press **Esc** / gamepad **Start**, or tap/click the timer HUD during a run, to pause (credits appear in the top-right of the pause overlay).
+7. Use the pause overlay for **Resume**, music, **ROTATION**, and **TOUCH CONTROLS** toggles.
+8. When time runs out, the vehicle drives off screen, then the game over panel appears — click **Retry** to reload.
 
 ## Building a Player
 The playable scene is already listed in build settings.
@@ -63,6 +64,7 @@ Edit Mode tests live in `Assets/Tests/`.
    - `MobileControlsToggleTests`
    - `PlayerControllerControlSchemeTests`
    - `GameManagerPauseInputTests`
+   - `TimerPauseTapHandlerTests`
    - `OrientationPreferenceTests`
    - `WebGraphicsSettingsTests`
 
@@ -70,7 +72,7 @@ Tests cover vehicle selection, dirt emitters, game-over exit drive, near-miss sc
 
 ### Mobile & gamepad input tests
 
-Gamepad and touch input is **simulated** with the Input System's `InputTestFixture` — no controller or touchscreen hardware is needed. Edit Mode suites cover input-mode detection (`InputModeWatcherTests`), the touch-controls toggle preference (`MobileControlsToggleTests`), the screen-orientation preference behind the pause menu's ROTATION toggle (`OrientationPreferenceTests`), the per-scheme movement bindings including left/right sticks (`PlayerControllerControlSchemeTests`), and the Esc/Start pause hotkeys (`GameManagerPauseInputTests`). The Play Mode suite `OrientationToggleE2ETests` verifies the runtime-built ROTATION button in the pause menu. The Play Mode suite `MobileAndGamepadE2ETests` drives the real scene with a simulated gamepad and touchscreen: stick/d-pad movement, Start-button pause and resume, touch-mode switching, the on-screen stick(s) and the persistent top-left pause button, the TOUCH CONTROLS toggle (top left, under the controls hints, on both the start screen and during runs), and the controls-hint text.
+Gamepad and touch input is **simulated** with the Input System's `InputTestFixture` — no controller or touchscreen hardware is needed. Edit Mode suites cover input-mode detection (`InputModeWatcherTests`), the touch-controls toggle preference (`MobileControlsToggleTests`), the timer tap/click pause handler (`TimerPauseTapHandlerTests`), the screen-orientation preference behind the pause menu's ROTATION toggle (`OrientationPreferenceTests`), the per-scheme movement bindings including left stick and d-pad (`PlayerControllerControlSchemeTests`), and the Esc/Start pause hotkeys (`GameManagerPauseInputTests`). The Play Mode suite `OrientationToggleE2ETests` verifies the runtime-built ROTATION button in the pause menu. The Play Mode suite `MobileAndGamepadE2ETests` drives the real scene with a simulated gamepad and touchscreen: stick/d-pad movement, Start-button pause and resume, touch-mode switching, tapping the timer HUD to pause/resume, the on-screen stick, the pause-menu **TOUCH CONTROLS** toggle, and the controls-hint text.
 
 Enabling this required listing `com.unity.inputsystem` under `testables` in `Packages/manifest.json`, which also makes the Input System package's **own** tests appear in Test Runner — they can be ignored (or filtered out by selecting only the `DisasterTests` / `DisasterPlayModeTests` assemblies).
 
@@ -101,8 +103,8 @@ Unity MCP can also run Edit Mode tests when the Editor is connected.
 - Rear dirt particle emitters aligned to each vehicle's rear geometry.
 - Camera-based screen bounds with wall clamping.
 - Endless runner scroll (ground, trees, rocks) with difficulty ramping.
-- Live run UI: wave number, dodge streak, low-time timer warning.
-- Adaptive controls: keyboard, gamepad, and on-screen virtual sticks (P1 bottom-left / left stick, P2 bottom-right / right stick in 2P), with a persistent top-left stack — controller hints, a TOUCH CONTROLS toggle (start screen and in-game), and a pause button that stays available during runs for every input device; the toggle choice persists via `PlayerPrefs`.
+- Live run UI: wave number, dodge streak, low-time timer warning, and timer HUD tap/click pause.
+- Adaptive controls: keyboard, gamepad, and an on-screen virtual stick (bottom-left), with a persistent top-left controller hint. The pause menu owns the **TOUCH CONTROLS** toggle, and the toggle choice persists via `PlayerPrefs`.
 - Near-miss bonus with sound and `+2s` popup.
 - Game-over exit: vehicle drives off screen while the world keeps animating, then everything stops.
 - Camera shake on rock impacts (screen-plane jitter).
@@ -118,6 +120,8 @@ The `VehicleSelector` component:
 
 ## Important Files
 - `Assets/Scripts/GameManager.cs` — timer, pause, game over, scoring, audio
+- `Assets/Scripts/MobileControlsUI.cs` — runtime mobile stick and in-game controls hint
+- `Assets/Scripts/TimerPauseTapHandler.cs` — pointer handler that lets timer HUD labels pause/resume
 - `Assets/Scripts/PlayerController.cs` — movement, bounds, exit drive
 - `Assets/Scripts/VehicleSelector.cs` — vehicle picker and dirt emitters
 - `Assets/Scripts/GroundScroller.cs` / `TreeScroller.cs` — world scroll
@@ -125,12 +129,15 @@ The `VehicleSelector` component:
 - `Assets/Tests/` — Edit Mode test suite
 - `Assets/Scenes/My Game.unity` — main playable scene
 - `PROJECT_REFLECTION.md` / `PROJECT_REFLECTION.md` — course reflections
-- `STORYBOOK.md` — component behavior reference for AI agents
+- `STORYBOOK.md` — gameplay component contracts (vehicle selector, mobile controls, scoring, spawn/walls) — component behavior reference for AI agents
 
 ## Notes for Developers
 - `VehicleSelector` depends on `GameManager` to gate selection input and emitter playback.
 - `IsWorldAnimating` keeps scrollers and dirt spray running during the post-game-over vehicle exit.
 - `MoveDown.ActiveRockCount` tracks live rocks for spawn cap checks.
+- `GameManager.EnsureRuntimeUiRefs()` clones pause-menu buttons at runtime for ROTATION and TOUCH CONTROLS; cloned buttons must replace inherited `onClick` events so they do not also fire the original music toggle.
+- `TimerPauseTapHandler` is attached to `timerText` / `timer2Text` at runtime. Countdown, elimination banner, and penalty-popup clones keep `raycastTarget = false` so they do not intercept gameplay taps.
+- `MobileControlsUI.TouchControlsActive` is automatic until the player toggles the pause-menu TOUCH CONTROLS button; after that, `PlayerPrefs` key `TouchControlsEnabled` forces the on-screen stick on or off across sessions.
 - If you add vehicle prefabs, keep emitter positions behind the fitted collider's rear face.
 - Avoid editing generated folders (`Library/`, `Temp/`, `Logs/`).
 - Unity MCP is available in this project for editor automation and test runs.
