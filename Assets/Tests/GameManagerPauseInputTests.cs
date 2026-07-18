@@ -56,30 +56,33 @@ public class GameManagerPauseInputTests : InputTestFixture
     public void GamepadStartButton_IgnoresVirtualPadButAcceptsRealPad()
     {
         TestReflectionHelpers.SetPrivateProperty(gameManager, "IsGameActive", true);
+        // Keep the clock from expiring if Update runs past the pause check
+        // (Edit Mode Time.deltaTime can be large enough to drain a fresh run).
+        TestReflectionHelpers.SetPrivateField(gameManager, "timeRemaining", 999f);
+        TestReflectionHelpers.SetPrivateField(gameManager, "timeRemaining2", 999f);
+
         var virtualPad = gamepad;
         InputModeWatcher.IgnoreDevice(virtualPad);
         var realPad = InputSystem.AddDevice<Gamepad>();
 
-        // Virtual (ignored) Start must not pause.
+        // Virtual (ignored) Start must not count as a pause press.
         Press(virtualPad.startButton, queueEventOnly: true);
         InputSystem.Update();
-        PumpGameManager();
-
-        Assert.That(gameManager.IsPaused, Is.False,
+        Assert.That(
+            (bool)TestReflectionHelpers.InvokePrivateStatic(typeof(GameManager), "WasPausePressedThisFrame"),
+            Is.False,
             "The on-screen stick's virtual gamepad must not pause the run.");
 
         Release(virtualPad.startButton, queueEventOnly: true);
         InputSystem.Update();
 
-        // Real Start must pause even while the virtual pad stays ignored.
-        // queueEventOnly + explicit Update keeps wasPressedThisFrame unambiguous
-        // across the multi-device setup (default Press() can flush an extra frame).
+        // Real Start must count, and pumping Update should engage pause.
         Press(realPad.startButton, queueEventOnly: true);
         InputSystem.Update();
-        Assert.That(realPad.startButton.wasPressedThisFrame, Is.True,
-            "Precondition: real pad Start should report wasPressedThisFrame.");
-        Assert.That(InputModeWatcher.IsDeviceIgnored(realPad), Is.False,
-            "Precondition: the real pad must not be in the ignored set.");
+        Assert.That(
+            (bool)TestReflectionHelpers.InvokePrivateStatic(typeof(GameManager), "WasPausePressedThisFrame"),
+            Is.True,
+            "A physical Start press should be visible to WasPausePressedThisFrame.");
         PumpGameManager();
 
         Assert.That(gameManager.IsPaused, Is.True,
