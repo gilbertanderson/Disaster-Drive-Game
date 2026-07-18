@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -18,6 +19,8 @@ public class GameManagerPauseInputTests : InputTestFixture
         gameManagerObject = new GameObject("GameManager");
         gameManager = gameManagerObject.AddComponent<GameManager>();
         gamepad = InputSystem.AddDevice<Gamepad>();
+        TestReflectionHelpers.GetPrivateStaticField<HashSet<InputDevice>>(
+            typeof(InputModeWatcher), "ignoredDevices").Clear();
         Time.timeScale = 1f;
     }
 
@@ -25,6 +28,8 @@ public class GameManagerPauseInputTests : InputTestFixture
     public void TearDownGameManager()
     {
         Time.timeScale = 1f;
+        TestReflectionHelpers.GetPrivateStaticField<HashSet<InputDevice>>(
+            typeof(InputModeWatcher), "ignoredDevices").Clear();
         Object.DestroyImmediate(gameManagerObject);
     }
 
@@ -44,6 +49,28 @@ public class GameManagerPauseInputTests : InputTestFixture
         PumpGameManager();
 
         Assert.That(gameManager.IsPaused, Is.True, "Start button should pause an active run.");
+        Assert.That(Time.timeScale, Is.EqualTo(0f).Within(0.001f));
+    }
+
+    [Test]
+    public void GamepadStartButton_IgnoresVirtualPadButAcceptsRealPad()
+    {
+        TestReflectionHelpers.SetPrivateProperty(gameManager, "IsGameActive", true);
+        InputModeWatcher.IgnoreDevice(gamepad);
+
+        Press(gamepad.startButton);
+        PumpGameManager();
+
+        Assert.That(gameManager.IsPaused, Is.False,
+            "The on-screen stick's virtual gamepad must not pause the run.");
+
+        Release(gamepad.startButton);
+        var realPad = InputSystem.AddDevice<Gamepad>();
+        Press(realPad.startButton);
+        PumpGameManager();
+
+        Assert.That(gameManager.IsPaused, Is.True,
+            "A physical Start press should still pause while a virtual pad is ignored.");
         Assert.That(Time.timeScale, Is.EqualTo(0f).Within(0.001f));
     }
 
