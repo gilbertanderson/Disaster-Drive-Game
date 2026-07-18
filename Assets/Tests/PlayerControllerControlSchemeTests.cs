@@ -96,6 +96,9 @@ public class PlayerControllerControlSchemeTests : InputTestFixture
         Set(gamepad.rightStick, Vector2.left);
         Assert.That(ReadMovement().x, Is.LessThan(-0.9f), "The right stick should steer Player 2.");
         Set(gamepad.rightStick, Vector2.zero);
+
+        Press(gamepad.dpad.right);
+        Assert.That(ReadMovement().x, Is.GreaterThan(0.9f), "The d-pad should steer Player 2.");
     }
 
     [Test]
@@ -104,10 +107,12 @@ public class PlayerControllerControlSchemeTests : InputTestFixture
         player.ApplyControlScheme(PlayerController.ControlScheme.WasdAndLeftStick);
 
         Set(gamepad.rightStick, Vector2.right);
+        Press(gamepad.dpad.right);
         Press(keyboard.rightArrowKey);
         Assert.That(ReadMovement().magnitude, Is.LessThan(0.01f),
-            "Arrows and the right stick belong to Player 2 and must not drive Player 1.");
+            "Arrows, d-pad, and the right stick belong to Player 2 and must not drive Player 1.");
         Release(keyboard.rightArrowKey);
+        Release(gamepad.dpad.right);
         Set(gamepad.rightStick, Vector2.zero);
 
         Set(gamepad.leftStick, Vector2.right);

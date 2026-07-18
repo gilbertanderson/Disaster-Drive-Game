@@ -47,6 +47,7 @@ public class PlayerController : MonoBehaviour
     public Vector3 CurrentMovementDirection { get; private set; }
     public float SteerInput { get; private set; }    // Raw -1..1 horizontal axis, ungated/unnormalized, for wheel-steer visuals
     public bool IsExiting => isExiting;
+    private float movementAnalogMagnitude;            // 0..1 stick deflection used by GetApproachSpeed
     private float wallMinZ = float.NegativeInfinity;  // Inner face of the low-Z wall (unbounded until found)
     private float wallMaxZ = float.PositiveInfinity;  // Inner face of the high-Z wall
 
@@ -102,6 +103,7 @@ public class PlayerController : MonoBehaviour
         if (gameManager != null && !gameManager.IsWorldAnimating)
         {
             CurrentMovementDirection = Vector3.zero;
+            movementAnalogMagnitude = 0f;
             SteerInput = 0f;
             playerRb.linearVelocity = Vector3.zero;
             playerRb.angularVelocity = Vector3.zero;
@@ -140,6 +142,7 @@ public class PlayerController : MonoBehaviour
         if (inputMagnitude < movementDeadzone)
         {
             CurrentMovementDirection = Vector3.zero;
+            movementAnalogMagnitude = 0f;
             playerRb.linearVelocity = Vector3.zero;
             playerRb.angularVelocity = Vector3.zero;
             return;
@@ -154,9 +157,9 @@ public class PlayerController : MonoBehaviour
         // input (real pad or on-screen stick) is not binary full-speed.
         Vector3 raw = screenRight * horizontalInput + screenForward * verticalInput;
         Vector3 movementDirection = raw.sqrMagnitude > 0.0001f ? raw.normalized : Vector3.zero;
-        float analogMagnitude = Mathf.Clamp01(inputMagnitude);
+        movementAnalogMagnitude = Mathf.Clamp01(inputMagnitude);
         CurrentMovementDirection = movementDirection;
-        Vector3 movement = movementDirection * (speed * analogMagnitude) * Time.fixedDeltaTime;
+        Vector3 movement = movementDirection * (speed * movementAnalogMagnitude) * Time.fixedDeltaTime;
         movement = ClampMovementAgainstOtherVehicle(movement);  // Vehicles are solid: never step through the other player
 
         // Apply movement, then clamp the result inside the playable area
@@ -226,15 +229,17 @@ public class PlayerController : MonoBehaviour
                 .With("Left", "<Keyboard>/leftArrow")
                 .With("Right", "<Keyboard>/rightArrow");
         }
-        // 1P: left stick + d-pad. 2P: left stick → P1, right stick → P2 (same
-        // split as the on-screen touch sticks).
+        // 1P: left stick + d-pad. 2P: left stick → P1, right stick + d-pad → P2
+        // (d-pad stays with P2 as before the left/right stick split).
         if (scheme == ControlScheme.WasdAndArrows || scheme == ControlScheme.WasdAndLeftStick)
-        {
             action.AddBinding("<Gamepad>/leftStick");
+        if (scheme == ControlScheme.WasdAndArrows)
+            action.AddBinding("<Gamepad>/dpad");
+        if (scheme == ControlScheme.ArrowsAndRightStick)
+        {
+            action.AddBinding("<Gamepad>/rightStick");
             action.AddBinding("<Gamepad>/dpad");
         }
-        if (scheme == ControlScheme.ArrowsAndRightStick)
-            action.AddBinding("<Gamepad>/rightStick");
         return action;
     }
 
@@ -463,7 +468,13 @@ public class PlayerController : MonoBehaviour
         towardOther.y = 0f;
         if (towardOther.sqrMagnitude < 0.001f)
             return 0f;
-        return Mathf.Max(0f, Vector3.Dot(CurrentMovementDirection * speed, towardOther.normalized));
+        // Scale by stick deflection so a light nudge isn't blamed as a full-speed ram.
+        // Digital keys / tests that only set CurrentMovementDirection count as full press.
+        float analog = movementAnalogMagnitude > 0.001f
+            ? Mathf.Clamp01(movementAnalogMagnitude)
+            : (CurrentMovementDirection.sqrMagnitude > 0.001f ? 1f : 0f);
+        float approachSpeed = speed * analog;
+        return Mathf.Max(0f, Vector3.Dot(CurrentMovementDirection * approachSpeed, towardOther.normalized));
     }
 
     public void SetSpeedMultiplier(float multiplier)

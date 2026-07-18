@@ -10,7 +10,9 @@ public class VehicleSelector : MonoBehaviour
 {
     private const string VehicleIndexKey = "VehicleIndex";
 
-    [SerializeField] private int playerIndex;                  // 0 = Player 1 (legacy prefs key), 1 = Player 2
+    // Fallback only when no PlayerController is present (edit-mode tests).
+    // Runtime player identity always comes from PlayerController.playerIndex.
+    [SerializeField] private int playerIndex;
     [SerializeField] private VehicleSelector otherSelector;    // The other player's selector; the two may never match
     [SerializeField] private GameObject[] vehicleVisuals;
     [SerializeField] private string[] vehicleNames;           // Optional display names; falls back to visual object names
@@ -37,8 +39,11 @@ public class VehicleSelector : MonoBehaviour
 
     public int CurrentIndex => index;
 
+    // Single source of truth: PlayerController when present, else serialized fallback.
+    int ResolvedPlayerIndex => playerController != null ? playerController.playerIndex : playerIndex;
+
     // P1 keeps the original key so an existing save still restores its vehicle.
-    string PrefsKey => playerIndex <= 0 ? VehicleIndexKey : VehicleIndexKey + (playerIndex + 1);
+    string PrefsKey => ResolvedPlayerIndex <= 0 ? VehicleIndexKey : VehicleIndexKey + (ResolvedPlayerIndex + 1);
 
     void Awake()
     {
@@ -46,9 +51,6 @@ public class VehicleSelector : MonoBehaviour
         if (groundScroller == null)
             groundScroller = FindAnyObjectByType<GroundScroller>();
         playerController = GetComponent<PlayerController>();
-        // Single source of truth for which player this selector belongs to.
-        if (playerController != null)
-            playerIndex = playerController.playerIndex;
 
         // Particle velocity must follow emitter rotation, which requires local simulation space.
         if (dirtEmitters != null)
@@ -82,8 +84,9 @@ public class VehicleSelector : MonoBehaviour
         if (gameManager != null && gameManager.IsOnStartScreen && Keyboard.current != null)
         {
             bool twoPlayer = gameManager.IsTwoPlayerMode;
-            bool listenWasd = playerIndex == 0;
-            bool listenArrows = twoPlayer ? playerIndex == 1 : playerIndex == 0;
+            int who = ResolvedPlayerIndex;
+            bool listenWasd = who == 0;
+            bool listenArrows = twoPlayer ? who == 1 : who == 0;
 
             bool prevPressed = (listenWasd && Keyboard.current.aKey.wasPressedThisFrame)
                 || (listenArrows && Keyboard.current.leftArrowKey.wasPressedThisFrame);
@@ -186,6 +189,12 @@ public class VehicleSelector : MonoBehaviour
             if (vehicleVisuals[i] != null)
                 vehicleVisuals[i].SetActive(i == index);
 
+        // Re-center the active visual on the player pivot each switch so imported
+        // meshes don't sit off the start-position center line.
+        if (vehicleVisuals != null && index >= 0 && index < vehicleVisuals.Length
+            && vehicleVisuals[index] != null)
+            AlignVisualToOrigin(vehicleVisuals[index]);
+
         CacheWheels();
         FitColliderToVisual();
         ApplyVehicleStats();
@@ -220,10 +229,11 @@ public class VehicleSelector : MonoBehaviour
             return;
 
         bool twoPlayer = gameManager != null && gameManager.IsTwoPlayerMode;
-        string prefix = twoPlayer ? PlayerColors.GetLabel(playerIndex) + ": " : string.Empty;
+        int who = ResolvedPlayerIndex;
+        string prefix = twoPlayer ? PlayerColors.GetLabel(who) + ": " : string.Empty;
         vehicleNameText.text = prefix + GetVehicleDisplayName(index);
         if (twoPlayer)
-            vehicleNameText.color = PlayerColors.GetColor(playerIndex);
+            vehicleNameText.color = PlayerColors.GetColor(who);
         else
             vehicleNameText.color = Color.white;
     }
@@ -489,17 +499,77 @@ public class VehicleSelector : MonoBehaviour
 
     void AlignVisualToOrigin(GameObject visual)
     {
-        var renderers = visual.GetComponentsInChildren<Renderer>(false);
-        if (renderers.Length == 0)
+        // Prefer mesh geometry in the visual's local space so ParticleSystem /
+        // Trail renderers (and skewed world AABBs) can't pull the car off-center.
+        if (TryGetLocalMeshBounds(visual.transform, out Bounds localBounds))
+        {
+            Vector3 bottomCenterInVisual = new Vector3(
+                localBounds.center.x, localBounds.min.y, localBounds.center.z);
+            Vector3 bottomCenterWorld = visual.transform.TransformPoint(bottomCenterInVisual);
+            Vector3 bottomCenterLocal = transform.InverseTransformPoint(bottomCenterWorld);
+            visual.transform.localPosition -= bottomCenterLocal;
+            return;
+        }
+
+        Bounds? bounds = null;
+        foreach (var renderer in visual.GetComponentsInChildren<Renderer>(false))
+        {
+            if (renderer is ParticleSystemRenderer || renderer is TrailRenderer || !renderer.enabled)
+                continue;
+            if (bounds == null)
+                bounds = renderer.bounds;
+            else
+            {
+                Bounds b = bounds.Value;
+                b.Encapsulate(renderer.bounds);
+                bounds = b;
+            }
+        }
+
+        if (bounds == null)
             return;
 
-        Bounds bounds = renderers[0].bounds;
-        for (int i = 1; i < renderers.Length; i++)
-            bounds.Encapsulate(renderers[i].bounds);
+        Vector3 bottomCenterWorldFallback = new Vector3(
+            bounds.Value.center.x, bounds.Value.min.y, bounds.Value.center.z);
+        Vector3 bottomCenterLocalFallback = transform.InverseTransformPoint(bottomCenterWorldFallback);
+        visual.transform.localPosition -= bottomCenterLocalFallback;
+    }
 
-        Vector3 bottomCenterWorld = new Vector3(bounds.center.x, bounds.min.y, bounds.center.z);
-        Vector3 bottomCenterLocal = transform.InverseTransformPoint(bottomCenterWorld);
-        visual.transform.localPosition -= bottomCenterLocal;
+    // Same corner-walk as SpawnManager: mesh bounds expressed in `root` local space.
+    static bool TryGetLocalMeshBounds(Transform root, out Bounds localBounds)
+    {
+        localBounds = default;
+        bool hasBounds = false;
+
+        foreach (var meshFilter in root.GetComponentsInChildren<MeshFilter>(false))
+        {
+            if (meshFilter.sharedMesh == null)
+                continue;
+
+            Bounds meshBounds = meshFilter.sharedMesh.bounds;
+            Matrix4x4 meshToRoot = root.worldToLocalMatrix * meshFilter.transform.localToWorldMatrix;
+            for (int corner = 0; corner < 8; corner++)
+            {
+                Vector3 extentSigns = new Vector3(
+                    (corner & 1) == 0 ? -1f : 1f,
+                    (corner & 2) == 0 ? -1f : 1f,
+                    (corner & 4) == 0 ? -1f : 1f);
+                Vector3 localCorner = meshToRoot.MultiplyPoint3x4(
+                    meshBounds.center + Vector3.Scale(meshBounds.extents, extentSigns));
+
+                if (!hasBounds)
+                {
+                    localBounds = new Bounds(localCorner, Vector3.zero);
+                    hasBounds = true;
+                }
+                else
+                {
+                    localBounds.Encapsulate(localCorner);
+                }
+            }
+        }
+
+        return hasBounds;
     }
 
     // Size the hitbox to the visible car so rocks touch the model before they collide,

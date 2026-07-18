@@ -38,8 +38,10 @@ public class GameManager : MonoBehaviour
     // P1's vehicle slides outward in 2P so the pair frames the start-screen shot;
     // P2's spot is scene-authored (z -3.5) since it only exists in 2P. In 1P, P1
     // returns to its scene-authored preview position.
-    private const float Player1VehicleSinglePlayerZ = 2.25f;
-    private const float Player1VehicleTwoPlayerZ = 8f;
+    // Lateral (world Z) start slots. Screen-right is world −Z with the top-down
+    // camera, so these are centered on the camera/road line at Z = 2.5.
+    private const float Player1VehicleSinglePlayerZ = 2.5f;
+    private const float Player1VehicleTwoPlayerZ = 8.25f;
 
     [Header("Timer")]
     [SerializeField] private float startTime = 60f;   // Seconds on the clock at the start of a run
@@ -1414,9 +1416,23 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    // Legacy no-arg overload: finish whichever vehicle is still mid exit-drive
+    // (must not assume Player 1 — P2 can finish first in 2P).
     public void OnVehicleExitComplete()
     {
-        OnVehicleExitComplete(player);
+        PlayerController exited = null;
+        if (players != null)
+        {
+            foreach (var p in players)
+            {
+                if (p != null && p.IsExiting)
+                {
+                    exited = p;
+                    break;
+                }
+            }
+        }
+        OnVehicleExitComplete(exited != null ? exited : player);
     }
 
     public void OnVehicleExitComplete(PlayerController exited)
