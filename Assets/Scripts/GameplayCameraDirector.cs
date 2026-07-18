@@ -1,17 +1,22 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 // Drives the start-of-run intro camera: a head-on shot of the vehicles held through
-// 3-2-1, then a swoop up to the top-down gameplay pose on GO.
+// 3-2-1, then a swoop up to the top-down gameplay pose on GO. Also owns the optional
+// rear-view gameplay pose toggled from the pause menu.
 public class GameplayCameraDirector : MonoBehaviour
 {
+    public const string RearViewPrefKey = "RearViewCameraEnabled";
+
     [SerializeField] private Transform introRig;
     [SerializeField] private Transform frontAnchor;
+    [SerializeField] private Transform rearAnchor;
     [SerializeField] private CameraShake cameraShake;
     [SerializeField] private float beatDuration = 0.8f;
 
-    private Vector3 gameplayPosition;
-    private Quaternion gameplayRotation;
+    private Vector3 topDownPosition;
+    private Quaternion topDownRotation;
     private bool introActive;
     private bool introComplete;
     private int currentBeat = -1;
@@ -21,12 +26,60 @@ public class GameplayCameraDirector : MonoBehaviour
     private Vector3 beatTargetPosition;
     private Quaternion beatTargetRotation;
     private bool beatInProgress;
+    private static int rearViewPref = int.MinValue;
+
+    // Raised when the pause-menu rear-view toggle flips so the button label can refresh.
+    public static event Action RearViewChanged;
+
+    public static bool RearViewEnabled
+    {
+        get
+        {
+            if (rearViewPref == int.MinValue)
+                rearViewPref = PlayerPrefs.GetInt(RearViewPrefKey, 0);
+            return rearViewPref == 1;
+        }
+    }
+
+    public static string RearViewButtonLabel =>
+        RearViewEnabled ? "REAR VIEW: ON" : "REAR VIEW: OFF";
+
+    public static void ToggleRearViewPref()
+    {
+        SetRearViewPref(RearViewEnabled ? 0 : 1);
+    }
+
+    public static void SetRearViewPref(int value)
+    {
+        rearViewPref = value;
+        PlayerPrefs.SetInt(RearViewPrefKey, value);
+        PlayerPrefs.Save();
+        RearViewChanged?.Invoke();
+    }
+
+    // Edit Mode / Play Mode tests reset the static pref cache between cases.
+    internal static void ResetRearViewPrefCacheForTests()
+    {
+        rearViewPref = int.MinValue;
+    }
 
     void Awake()
     {
-        CacheGameplayPose();
+        // Scene-authored Main Camera transform is the top-down gameplay pose.
+        topDownPosition = transform.position;
+        topDownRotation = transform.rotation;
         if (cameraShake == null)
             cameraShake = GetComponent<CameraShake>();
+    }
+
+    void OnEnable()
+    {
+        RearViewChanged += ApplyPreferredGameplayPose;
+    }
+
+    void OnDisable()
+    {
+        RearViewChanged -= ApplyPreferredGameplayPose;
     }
 
     void Update()
@@ -37,8 +90,14 @@ public class GameplayCameraDirector : MonoBehaviour
 
     public void CacheGameplayPose()
     {
-        gameplayPosition = transform.position;
-        gameplayRotation = transform.rotation;
+        // Only refresh the stored top-down pose while that pose is the live one.
+        // If rear view is already applied, the live transform is the rear anchor and
+        // must not overwrite the return path back to top-down.
+        if (RearViewEnabled && HasRearAnchor())
+            return;
+
+        topDownPosition = transform.position;
+        topDownRotation = transform.rotation;
     }
 
     public void StartIntroSequence(IReadOnlyList<Transform> vehicleRoots)
@@ -72,6 +131,19 @@ public class GameplayCameraDirector : MonoBehaviour
         currentBeat = beatIndex;
         beatElapsed = 0f;
         beatInProgress = true;
+    }
+
+    // Snaps (or keeps) the camera on the player's preferred gameplay pose once the
+    // intro is done, or immediately when the pause-menu toggle flips mid-run.
+    public void ApplyPreferredGameplayPose()
+    {
+        if (introActive && !introComplete)
+            return;
+
+        GetPreferredGameplayPose(out Vector3 position, out Quaternion rotation);
+        transform.SetPositionAndRotation(position, rotation);
+        if (cameraShake != null)
+            cameraShake.SyncRestPosition();
     }
 
     internal bool IsIntroComplete => introComplete || !HasValidAnchors();
@@ -114,6 +186,11 @@ public class GameplayCameraDirector : MonoBehaviour
         return introRig != null && frontAnchor != null;
     }
 
+    bool HasRearAnchor()
+    {
+        return rearAnchor != null;
+    }
+
     void PositionRigAtFocalPoint(IReadOnlyList<Transform> vehicleRoots)
     {
         if (introRig == null || vehicleRoots == null || vehicleRoots.Count == 0)
@@ -137,6 +214,19 @@ public class GameplayCameraDirector : MonoBehaviour
         introRig.position = new Vector3(midpoint.x, rigPosition.y, midpoint.z);
     }
 
+    void GetPreferredGameplayPose(out Vector3 position, out Quaternion rotation)
+    {
+        if (RearViewEnabled && HasRearAnchor())
+        {
+            position = rearAnchor.position;
+            rotation = rearAnchor.rotation;
+            return;
+        }
+
+        position = topDownPosition;
+        rotation = topDownRotation;
+    }
+
     void GetBeatTargetPose(int beatIndex, out Vector3 position, out Quaternion rotation)
     {
         // Beats 0-2 (3, 2, 1) hold the head-on front shot; beat 3 (GO) swoops to gameplay.
@@ -147,8 +237,7 @@ public class GameplayCameraDirector : MonoBehaviour
         }
         else
         {
-            position = gameplayPosition;
-            rotation = gameplayRotation;
+            GetPreferredGameplayPose(out position, out rotation);
         }
     }
 

@@ -87,6 +87,10 @@ public class MobileAndGamepadE2ETests : InputTestFixture
         PlayerPrefs.DeleteKey(MobileControlsUI.TouchControlsPrefKey);
         SetPrivateStaticField(typeof(MobileControlsUI), "touchControlsPref", int.MinValue);
 
+        // Same for the rear-view camera toggle.
+        PlayerPrefs.DeleteKey(GameplayCameraDirector.RearViewPrefKey);
+        GameplayCameraDirector.ResetRearViewPrefCacheForTests();
+
         // Hide the on-screen controls while this test's input system still
         // exists, so the stick removes its virtual gamepad cleanly before
         // InputTestFixture restores the previous input state.
@@ -279,6 +283,55 @@ public class MobileAndGamepadE2ETests : InputTestFixture
         Assert.That(toggleTransform, Is.Not.Null,
             "GameManager should clone a touch-controls toggle into the pause menu at startup.");
         return toggleTransform.GetComponent<Button>();
+    }
+
+    Button FindPauseMenuRearViewButton()
+    {
+        var pausePanel = GetPrivateField<GameObject>(gameManager, "pausePanel");
+        Assert.That(pausePanel, Is.Not.Null, "pausePanel should be wired in the scene.");
+        var toggleTransform = pausePanel.transform.Find("RearViewButtonRuntime");
+        Assert.That(toggleTransform, Is.Not.Null,
+            "GameManager should clone a rear-view toggle into the pause menu at startup.");
+        return toggleTransform.GetComponent<Button>();
+    }
+
+    [UnityTest]
+    public IEnumerator PauseMenuRearViewToggle_MovesCameraBehindCars_AndPersistsChoice()
+    {
+        yield return StartRunAndWaitUntilActive();
+
+        var director = Object.FindAnyObjectByType<GameplayCameraDirector>();
+        Assert.That(director, Is.Not.Null);
+        var rearAnchor = GetPrivateField<Transform>(director, "rearAnchor");
+        Assert.That(rearAnchor, Is.Not.Null, "Scene should wire IntroCameraRear into GameplayCameraDirector.");
+
+        Vector3 topDownPos = Camera.main.transform.position;
+
+        gameManager.TogglePause();
+        yield return null;
+        Assert.That(gameManager.IsPaused, Is.True);
+
+        var toggleButton = FindPauseMenuRearViewButton();
+        Assert.That(toggleButton.GetComponentInChildren<TMP_Text>(true).text, Does.Contain("OFF"));
+
+        toggleButton.onClick.Invoke();
+        yield return null;
+
+        Assert.That(GameplayCameraDirector.RearViewEnabled, Is.True);
+        Assert.That(PlayerPrefs.GetInt(GameplayCameraDirector.RearViewPrefKey, 0), Is.EqualTo(1));
+        Assert.That(Vector3.Distance(Camera.main.transform.position, rearAnchor.position), Is.LessThan(0.05f),
+            "Enabling rear view from the pause menu should move the camera behind the cars.");
+        Assert.That(toggleButton.GetComponentInChildren<TMP_Text>(true).text, Does.Contain("ON"));
+
+        toggleButton.onClick.Invoke();
+        yield return null;
+
+        Assert.That(GameplayCameraDirector.RearViewEnabled, Is.False);
+        Assert.That(Vector3.Distance(Camera.main.transform.position, topDownPos), Is.LessThan(0.05f),
+            "Disabling rear view should restore the top-down gameplay camera.");
+
+        gameManager.TogglePause();
+        yield return null;
     }
 
     [UnityTest]

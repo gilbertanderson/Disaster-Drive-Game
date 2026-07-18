@@ -23,11 +23,15 @@ using UnityEngine.UI;
 // persisted.
 public class MobileControlsUI : MonoBehaviour
 {
-    private const float StickAreaSize = 340f;
-    private const float StickHandleSize = 130f;
-    private const float StickMovementRange = 105f;
-    private const float StickInsetX = 260f;
-    private const float StickInsetY = 240f;
+    private const float StickAreaSize = 380f;
+    private const float StickHandleSize = 150f;
+    private const float StickMovementRange = 120f;
+    // Dynamic-origin radius covers the full stick pad so a thumb press anywhere
+    // in the area (not just on the small handle) starts steering — important on
+    // large phones / the iOS Simulator where missing the handle felt like a dead stick.
+    private const float StickDynamicOriginRange = 190f;
+    private const float StickInsetX = 240f;
+    private const float StickInsetY = 220f;
 
     public const string TouchControlsPrefKey = "TouchControlsEnabled";
     private const int PrefUnloaded = int.MinValue; // Sentinel: PlayerPrefs not read yet
@@ -249,7 +253,9 @@ public class MobileControlsUI : MonoBehaviour
         hintRect.SetParent(canvasGo.transform, false);
         hintRect.anchorMin = hintRect.anchorMax = new Vector2(0f, 1f);
         hintRect.pivot = new Vector2(0f, 1f);
-        hintRect.anchoredPosition = new Vector2(40f, -40f);
+        // Dropped below the notch / Dynamic Island safe area so the hint (and the
+        // pause-panel credits opposite it) stay fully readable on tall phones.
+        hintRect.anchoredPosition = new Vector2(40f, -100f);
         hintRect.sizeDelta = new Vector2(560f, 120f);
         hintLabel = hintRoot.GetComponent<TextMeshProUGUI>();
         hintLabel.fontSize = 32f;
@@ -281,6 +287,14 @@ public class MobileControlsUI : MonoBehaviour
         stick = handleGo.GetComponent<OnScreenStick>();
         stick.controlPath = controlPath;
         stick.movementRange = StickMovementRange;
+        // ExactPositionWithDynamicOrigin: first press within the pad becomes the
+        // stick origin, so steering starts immediately instead of requiring a grab
+        // on the small centered handle. Isolated actions keep the virtual gamepad
+        // from fighting the touch pointer device mid-drag (jitter / dropped input
+        // on the iOS Simulator and some mobile WebGL browsers).
+        stick.behaviour = OnScreenStick.Behaviour.ExactPositionWithDynamicOrigin;
+        stick.dynamicOriginRange = StickDynamicOriginRange;
+        stick.useIsolatedInputActions = true;
         return root;
     }
 

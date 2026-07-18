@@ -7,12 +7,20 @@ public class GameplayCameraDirectorTests
     private GameObject cameraObject;
     private GameObject rigObject;
     private GameObject frontAnchorObject;
+    private GameObject rearAnchorObject;
     private CameraShake cameraShake;
     private GameplayCameraDirector director;
+    private bool hadRearViewPref;
+    private int savedRearViewPref;
 
     [SetUp]
     public void SetUp()
     {
+        hadRearViewPref = PlayerPrefs.HasKey(GameplayCameraDirector.RearViewPrefKey);
+        savedRearViewPref = PlayerPrefs.GetInt(GameplayCameraDirector.RearViewPrefKey, 0);
+        PlayerPrefs.DeleteKey(GameplayCameraDirector.RearViewPrefKey);
+        GameplayCameraDirector.ResetRearViewPrefCacheForTests();
+
         cameraObject = new GameObject("Main Camera");
         cameraObject.transform.SetPositionAndRotation(
             new Vector3(0f, 16f, 2.5f),
@@ -21,12 +29,15 @@ public class GameplayCameraDirectorTests
         rigObject = new GameObject("IntroCameraRig");
         frontAnchorObject = CreateAnchor("IntroCameraFront", rigObject.transform,
             new Vector3(11.5f, 2.6f, 0f), Quaternion.Euler(10f, 270f, 0f));
+        rearAnchorObject = CreateAnchor("IntroCameraRear", rigObject.transform,
+            new Vector3(-12f, 4.5f, 0f), Quaternion.Euler(25f, 90f, 0f));
 
         cameraShake = cameraObject.AddComponent<CameraShake>();
         director = cameraObject.AddComponent<GameplayCameraDirector>();
 
         SetPrivateField(director, "introRig", rigObject.transform);
         SetPrivateField(director, "frontAnchor", frontAnchorObject.transform);
+        SetPrivateField(director, "rearAnchor", rearAnchorObject.transform);
         SetPrivateField(director, "cameraShake", cameraShake);
         SetPrivateField(director, "beatDuration", 0.8f);
 
@@ -38,6 +49,13 @@ public class GameplayCameraDirectorTests
     {
         Object.DestroyImmediate(rigObject);
         Object.DestroyImmediate(cameraObject);
+
+        if (hadRearViewPref)
+            PlayerPrefs.SetInt(GameplayCameraDirector.RearViewPrefKey, savedRearViewPref);
+        else
+            PlayerPrefs.DeleteKey(GameplayCameraDirector.RearViewPrefKey);
+        GameplayCameraDirector.ResetRearViewPrefCacheForTests();
+        TestReflectionHelpers.SetPrivateStaticField(typeof(GameplayCameraDirector), "RearViewChanged", null);
     }
 
     [Test]
@@ -102,6 +120,49 @@ public class GameplayCameraDirectorTests
         cameraShake.SyncRestPosition();
 
         Assert.That(cameraObject.transform.localPosition, Is.EqualTo(new Vector3(0f, 16f, 2.5f)).Using(Vector3EqualityComparer.Instance));
+    }
+
+    [Test]
+    public void PlayIntroSequence_EndsAtRearPose_WhenRearViewEnabled()
+    {
+        GameplayCameraDirector.SetRearViewPref(1);
+
+        director.SimulateFullIntro();
+
+        Assert.That(director.IsIntroComplete, Is.True);
+        Assert.That(Vector3.Distance(cameraObject.transform.position, rearAnchorObject.transform.position), Is.LessThan(0.001f));
+        Assert.That(Quaternion.Angle(cameraObject.transform.rotation, rearAnchorObject.transform.rotation), Is.LessThan(0.1f));
+    }
+
+    [Test]
+    public void ApplyPreferredGameplayPose_TogglesBetweenTopDownAndRear()
+    {
+        director.SimulateFullIntro();
+
+        GameplayCameraDirector.SetRearViewPref(1);
+        director.ApplyPreferredGameplayPose();
+        Assert.That(Vector3.Distance(cameraObject.transform.position, rearAnchorObject.transform.position), Is.LessThan(0.001f),
+            "Enabling rear view should snap to the rear anchor.");
+
+        GameplayCameraDirector.SetRearViewPref(0);
+        director.ApplyPreferredGameplayPose();
+        Assert.That(cameraObject.transform.position, Is.EqualTo(new Vector3(0f, 16f, 2.5f)).Using(Vector3EqualityComparer.Instance),
+            "Disabling rear view should restore the top-down gameplay pose.");
+    }
+
+    [Test]
+    public void ToggleRearViewPref_PersistsAndRaisesChanged()
+    {
+        bool raised = false;
+        GameplayCameraDirector.RearViewChanged += () => raised = true;
+
+        Assert.That(GameplayCameraDirector.RearViewEnabled, Is.False);
+        GameplayCameraDirector.ToggleRearViewPref();
+
+        Assert.That(GameplayCameraDirector.RearViewEnabled, Is.True);
+        Assert.That(PlayerPrefs.GetInt(GameplayCameraDirector.RearViewPrefKey, 0), Is.EqualTo(1));
+        Assert.That(raised, Is.True);
+        Assert.That(GameplayCameraDirector.RearViewButtonLabel, Does.Contain("ON"));
     }
 
     void AdvanceBeat(int beatIndex)

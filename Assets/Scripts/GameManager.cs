@@ -173,6 +173,7 @@ public class GameManager : MonoBehaviour
     private TwoPlayerUIStyler uiStyler;
     private TMP_Text rotationButtonLabel;  // Label of the runtime-cloned pause-menu rotation toggle
     private TMP_Text touchControlsButtonLabel;  // Label of the runtime-cloned pause-menu touch-controls toggle
+    private TMP_Text rearViewButtonLabel;  // Label of the runtime-cloned pause-menu rear-view toggle
 
     void Start()
     {
@@ -628,6 +629,15 @@ public class GameManager : MonoBehaviour
         PlayClick();
     }
 
+    // Wired to the pause overlay's runtime-built rear-view button (see
+    // EnsureRuntimeUiRefs). Flips the gameplay camera between top-down and the
+    // behind-the-cars rear anchor; the director applies the pose immediately.
+    public void ToggleRearView()
+    {
+        GameplayCameraDirector.ToggleRearViewPref();
+        PlayClick();
+    }
+
     // Wired to the start screen's player-count toggle button.
     public void TogglePlayerCount()
     {
@@ -821,6 +831,26 @@ public class GameManager : MonoBehaviour
                 button.onClick.AddListener(ToggleTouchControls);
                 touchControlsButtonLabel = go.GetComponentInChildren<TMP_Text>(true);
                 UpdateTouchControlsButtonLabel();
+            }
+        }
+
+        // Rear-view camera toggle for the pause menu (next 120px slot after
+        // Touch Controls at -490). Lets the player look at the backs of the cars.
+        if (rearViewButtonLabel == null && musicButtonLabel != null)
+        {
+            var musicButton = musicButtonLabel.GetComponentInParent<Button>(true);
+            if (musicButton != null)
+            {
+                GameObject go = Instantiate(musicButton.gameObject, musicButton.transform.parent);
+                go.name = "RearViewButtonRuntime";
+                var rt = go.GetComponent<RectTransform>();
+                if (rt != null)
+                    rt.anchoredPosition = new Vector2(0f, -610f);
+                var button = go.GetComponent<Button>();
+                button.onClick = new Button.ButtonClickedEvent();
+                button.onClick.AddListener(ToggleRearView);
+                rearViewButtonLabel = go.GetComponentInChildren<TMP_Text>(true);
+                UpdateRearViewButtonLabel();
             }
         }
 
@@ -1197,7 +1227,7 @@ public class GameManager : MonoBehaviour
         if (runStatsText == null)
             return;
 
-        if (!IsGameActive || IsPaused)
+        if (!IsGameActive)
         {
             runStatsText.text = string.Empty;
             return;
@@ -1239,6 +1269,7 @@ public class GameManager : MonoBehaviour
         MobileControlsUI.TouchControlsChanged += UpdateControlsHint;
         MobileControlsUI.TouchControlsChanged += UpdateTouchControlsButtonLabel;
         OrientationManager.OrientationPreferenceChanged += UpdateRotationButtonLabel;
+        GameplayCameraDirector.RearViewChanged += UpdateRearViewButtonLabel;
     }
 
     void OnDisable()
@@ -1247,6 +1278,7 @@ public class GameManager : MonoBehaviour
         MobileControlsUI.TouchControlsChanged -= UpdateControlsHint;
         MobileControlsUI.TouchControlsChanged -= UpdateTouchControlsButtonLabel;
         OrientationManager.OrientationPreferenceChanged -= UpdateRotationButtonLabel;
+        GameplayCameraDirector.RearViewChanged -= UpdateRearViewButtonLabel;
     }
 
     // Hint reflects whatever device the player last used (see InputModeWatcher)
@@ -1310,6 +1342,12 @@ public class GameManager : MonoBehaviour
         if (touchControlsButtonLabel != null)
             touchControlsButtonLabel.text = MobileControlsUI.TouchControlsActive
                 ? "TOUCH CONTROLS: ON" : "TOUCH CONTROLS: OFF";
+    }
+
+    void UpdateRearViewButtonLabel()
+    {
+        if (rearViewButtonLabel != null)
+            rearViewButtonLabel.text = GameplayCameraDirector.RearViewButtonLabel;
     }
 
     void UpdateLeaderboardDisplay()
