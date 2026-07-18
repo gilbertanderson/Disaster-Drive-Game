@@ -110,6 +110,25 @@ public class MobileControlsToggleTests
     }
 
     [Test]
+    public void ToggleTouchControlsPref_FlipsChoice_AndRaisesChanged()
+    {
+        bool raised = false;
+        MobileControlsUI.TouchControlsChanged += () => raised = true;
+
+        MobileControlsUI.ToggleTouchControlsPref();
+
+        Assert.That(MobileControlsUI.TouchControlsActive, Is.True,
+            "Toggling from inactive (Keyboard mode, no choice) should turn touch controls on.");
+        Assert.That(raised, Is.True,
+            "The pause-menu toggle should raise TouchControlsChanged so its label re-renders.");
+
+        MobileControlsUI.ToggleTouchControlsPref();
+
+        Assert.That(MobileControlsUI.TouchControlsActive, Is.False,
+            "Toggling again should turn touch controls back off.");
+    }
+
+    [Test]
     public void InGameHint_MatchesModeAndToggle()
     {
         Assert.That(BuildHint(InputMode.Gamepad, false, false), Does.Contain("Start"),

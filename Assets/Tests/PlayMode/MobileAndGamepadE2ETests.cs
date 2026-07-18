@@ -189,13 +189,10 @@ public class MobileAndGamepadE2ETests : InputTestFixture
         Assert.That(mobileControls, Is.Not.Null, "MobileControlsUI should self-bootstrap at runtime.");
 
         var stickRoot = GetPrivateField<GameObject>(mobileControls, "stickRoot");
-        var pauseRoot = GetPrivateField<GameObject>(mobileControls, "pauseRoot");
         yield return InputSimulationHelpers.WaitUntilOrTimeout(() => stickRoot.activeInHierarchy, WaitTimeout);
 
         Assert.That(stickRoot.activeInHierarchy, Is.True,
             "The on-screen stick should appear in Touch mode during an active run.");
-        Assert.That(pauseRoot.activeInHierarchy, Is.True,
-            "The on-screen pause button should appear in Touch mode during an active run.");
     }
 
     [UnityTest]
@@ -214,8 +211,6 @@ public class MobileAndGamepadE2ETests : InputTestFixture
         Assert.That(mobileControls, Is.Not.Null);
         Assert.That(GetPrivateField<GameObject>(mobileControls, "stickRoot").activeInHierarchy, Is.False,
             "The on-screen stick must stay hidden while playing with the keyboard.");
-        Assert.That(GetPrivateField<GameObject>(mobileControls, "pauseRoot").activeInHierarchy, Is.True,
-            "The top-left pause button persists during a run regardless of input device.");
     }
 
     [UnityTest]
@@ -248,38 +243,46 @@ public class MobileAndGamepadE2ETests : InputTestFixture
             "Driving with the on-screen stick must not flip the input mode away from Touch.");
     }
 
+    // A real screen-space touch through the EventSystem/GraphicRaycaster onto
+    // the timer HUD — the on-screen pause button was removed in favor of
+    // tapping the timer directly (see TimerPauseTapHandler).
     [UnityTest]
-    public IEnumerator MobilePauseButton_TogglesPause_AndStaysReachableWhilePaused()
+    public IEnumerator TouchTapOnTimer_TogglesPause_AndStaysReachableWhilePaused()
     {
         yield return StartRunAndWaitUntilActive();
 
-        yield return InputSimulationHelpers.Tap(this, ScreenCenter());
+        var timerText = GetPrivateField<TMP_Text>(gameManager, "timerText");
+        Assert.That(timerText, Is.Not.Null, "timerText should be wired in the scene.");
+        Vector2 timerScreenPos = RectTransformUtility.WorldToScreenPoint(null, timerText.rectTransform.position);
 
-        var mobileControls = Object.FindAnyObjectByType<MobileControlsUI>();
-        var pauseRoot = GetPrivateField<GameObject>(mobileControls, "pauseRoot");
-        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => pauseRoot.activeInHierarchy, WaitTimeout);
-        Assert.That(pauseRoot.activeInHierarchy, Is.True);
-
-        var pauseButton = pauseRoot.GetComponent<Button>();
-        pauseButton.onClick.Invoke();
+        yield return InputSimulationHelpers.Tap(this, timerScreenPos);
         yield return null;
 
-        Assert.That(gameManager.IsPaused, Is.True, "The on-screen pause button should pause the run.");
+        Assert.That(gameManager.IsPaused, Is.True, "Tapping the timer should pause the run.");
         Assert.That(Time.timeScale, Is.EqualTo(0f).Within(0.001f));
-        Assert.That(pauseRoot.activeInHierarchy, Is.True,
-            "The pause button must stay visible while paused so the same button can resume.");
 
-        pauseButton.onClick.Invoke();
+        yield return InputSimulationHelpers.Tap(this, timerScreenPos);
         yield return null;
 
-        Assert.That(gameManager.IsPaused, Is.False, "The same button should resume the run.");
+        Assert.That(gameManager.IsPaused, Is.False, "Tapping the timer again should resume the run.");
         Assert.That(Time.timeScale, Is.EqualTo(1f).Within(0.001f));
     }
 
-    // --- Touch-controls toggle ---
+    // --- Touch-controls toggle (pause-menu button, cloned at startup by
+    // GameManager.EnsureRuntimeUiRefs) ---
+
+    Button FindPauseMenuTouchControlsButton()
+    {
+        var pausePanel = GetPrivateField<GameObject>(gameManager, "pausePanel");
+        Assert.That(pausePanel, Is.Not.Null, "pausePanel should be wired in the scene.");
+        var toggleTransform = pausePanel.transform.Find("TouchControlsButtonRuntime");
+        Assert.That(toggleTransform, Is.Not.Null,
+            "GameManager should clone a touch-controls toggle into the pause menu at startup.");
+        return toggleTransform.GetComponent<Button>();
+    }
 
     [UnityTest]
-    public IEnumerator ToggleButton_HidesMobileControls_InTouchMode_AndPersistsChoice()
+    public IEnumerator PauseMenuToggle_HidesMobileControls_InTouchMode_AndPersistsChoice()
     {
         yield return StartRunAndWaitUntilActive();
 
@@ -287,38 +290,41 @@ public class MobileAndGamepadE2ETests : InputTestFixture
 
         var mobileControls = Object.FindAnyObjectByType<MobileControlsUI>();
         var stickRoot = GetPrivateField<GameObject>(mobileControls, "stickRoot");
-        var pauseRoot = GetPrivateField<GameObject>(mobileControls, "pauseRoot");
-        var toggleRoot = GetPrivateField<GameObject>(mobileControls, "toggleRoot");
         yield return InputSimulationHelpers.WaitUntilOrTimeout(() => stickRoot.activeInHierarchy, WaitTimeout);
         Assert.That(stickRoot.activeInHierarchy, Is.True);
-        Assert.That(toggleRoot.activeInHierarchy, Is.True,
-            "The touch-controls toggle should be visible during a run in Touch mode.");
 
-        toggleRoot.GetComponent<Button>().onClick.Invoke();
+        gameManager.TogglePause();
+        yield return null;
+        Assert.That(gameManager.IsPaused, Is.True);
+
+        var toggleButton = FindPauseMenuTouchControlsButton();
+        Assert.That(toggleButton.gameObject.activeInHierarchy, Is.True,
+            "The touch-controls toggle should be visible in the open pause menu.");
+
+        toggleButton.onClick.Invoke();
         yield return InputSimulationHelpers.WaitUntilOrTimeout(() => !stickRoot.activeInHierarchy, WaitTimeout);
 
         Assert.That(stickRoot.activeInHierarchy, Is.False,
             "Toggling touch controls off should hide the on-screen stick even in Touch mode.");
-        Assert.That(pauseRoot.activeInHierarchy, Is.True,
-            "The top-left pause button persists even with touch controls toggled off.");
         Assert.That(InputModeWatcher.Mode, Is.EqualTo(InputMode.Touch),
             "The toggle changes controls visibility, not the detected input mode.");
         Assert.That(PlayerPrefs.GetInt(MobileControlsUI.TouchControlsPrefKey, -1), Is.EqualTo(0),
             "The explicit off choice should be persisted in PlayerPrefs.");
-        Assert.That(toggleRoot.activeInHierarchy, Is.True,
-            "The toggle itself must stay visible so the controls can be turned back on.");
 
-        toggleRoot.GetComponent<Button>().onClick.Invoke();
+        toggleButton.onClick.Invoke();
         yield return InputSimulationHelpers.WaitUntilOrTimeout(() => stickRoot.activeInHierarchy, WaitTimeout);
 
         Assert.That(stickRoot.activeInHierarchy, Is.True,
             "Toggling touch controls back on should re-show the on-screen stick.");
         Assert.That(PlayerPrefs.GetInt(MobileControlsUI.TouchControlsPrefKey, -1), Is.EqualTo(1),
             "The explicit on choice should be persisted in PlayerPrefs.");
+
+        gameManager.TogglePause();
+        yield return null;
     }
 
     [UnityTest]
-    public IEnumerator ToggleButton_ForcesMobileControlsOn_InKeyboardMode()
+    public IEnumerator PauseMenuToggle_ForcesMobileControlsOn_InKeyboardMode()
     {
         yield return StartRunAndWaitUntilActive();
 
@@ -330,14 +336,13 @@ public class MobileAndGamepadE2ETests : InputTestFixture
 
         var mobileControls = Object.FindAnyObjectByType<MobileControlsUI>();
         var stickRoot = GetPrivateField<GameObject>(mobileControls, "stickRoot");
-        var toggleRoot = GetPrivateField<GameObject>(mobileControls, "toggleRoot");
-        // A touchscreen device is present (added in SetUp), so the toggle is
-        // offered even while playing with the keyboard.
-        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => toggleRoot.activeInHierarchy, WaitTimeout);
-        Assert.That(toggleRoot.activeInHierarchy, Is.True);
         Assert.That(stickRoot.activeInHierarchy, Is.False);
 
-        toggleRoot.GetComponent<Button>().onClick.Invoke();
+        gameManager.TogglePause();
+        yield return null;
+        var toggleButton = FindPauseMenuTouchControlsButton();
+        toggleButton.onClick.Invoke();
+        gameManager.TogglePause();
         yield return InputSimulationHelpers.WaitUntilOrTimeout(() => stickRoot.activeInHierarchy, WaitTimeout);
 
         Assert.That(stickRoot.activeInHierarchy, Is.True,
@@ -347,7 +352,7 @@ public class MobileAndGamepadE2ETests : InputTestFixture
     }
 
     [UnityTest]
-    public IEnumerator InGameControlsHint_ShowsAboveToggle_AndTracksInputMode()
+    public IEnumerator InGameControlsHint_Visible_AndTracksInputMode()
     {
         yield return StartRunAndWaitUntilActive();
 
@@ -374,29 +379,47 @@ public class MobileAndGamepadE2ETests : InputTestFixture
     }
 
     [UnityTest]
-    public IEnumerator ToggleButton_ShowsOnStartScreen_AndUpdatesStartHint()
+    public IEnumerator PauseMenuToggle_UpdatesLabel_AndLeavesMusicAlone()
     {
-        // No StartGame: the scene loads onto the start screen, where the toggle
-        // sits under the start panel's own controls hint (top left).
+        // The overlay hint stays hidden on the start screen — the start panel
+        // has its own controls hint in the same top-left spot.
         var mobileControls = Object.FindAnyObjectByType<MobileControlsUI>();
         Assert.That(mobileControls, Is.Not.Null, "MobileControlsUI should self-bootstrap at runtime.");
-        var toggleRoot = GetPrivateField<GameObject>(mobileControls, "toggleRoot");
         var hintRoot = GetPrivateField<GameObject>(mobileControls, "hintRoot");
-        yield return InputSimulationHelpers.WaitUntilOrTimeout(() => toggleRoot.activeInHierarchy, WaitTimeout);
-
-        Assert.That(toggleRoot.activeInHierarchy, Is.True,
-            "The toggle should be offered on the start screen when a touchscreen is present.");
         Assert.That(hintRoot.activeInHierarchy, Is.False,
-            "The overlay hint stays hidden on the start screen — the start panel has its own controls hint.");
+            "The overlay hint stays hidden on the start screen.");
 
-        toggleRoot.GetComponent<Button>().onClick.Invoke();
+        yield return StartRunAndWaitUntilActive();
+
+        gameManager.TogglePause();
+        yield return null;
+        Assert.That(gameManager.IsPaused, Is.True);
+
+        var toggleButton = FindPauseMenuTouchControlsButton();
+        var label = toggleButton.GetComponentInChildren<TMP_Text>(true);
+        Assert.That(label, Is.Not.Null);
+        Assert.That(label.text, Is.EqualTo("TOUCH CONTROLS: OFF"),
+            "In Keyboard mode with no explicit choice, the label should read OFF.");
+
+        var musicSource = GetPrivateField<AudioSource>(gameManager, "musicSource");
+        bool muteBefore = musicSource != null && musicSource.mute;
+
+        toggleButton.onClick.Invoke();
         yield return null;
 
         Assert.That(PlayerPrefs.GetInt(MobileControlsUI.TouchControlsPrefKey, -1), Is.EqualTo(1),
-            "Toggling on from the start screen should persist the on choice.");
+            "Toggling on from the pause menu should persist the on choice.");
+        Assert.That(label.text, Is.EqualTo("TOUCH CONTROLS: ON"),
+            "The button label should follow the toggle state.");
         var hint = GetPrivateField<TMP_Text>(gameManager, "controlsHintText");
         Assert.That(hint.text, Does.Contain("Drag stick"),
-            "The start screen hint should switch to touch instructions when controls are forced on.");
+            "The start-screen hint should switch to touch instructions when controls are forced on.");
+
+        // The clone starts from the music button, whose scene-wired persistent
+        // ToggleMusic call must NOT survive on the copy.
+        if (musicSource != null)
+            Assert.That(musicSource.mute, Is.EqualTo(muteBefore),
+                "The touch-controls toggle must not inherit the music button's persistent ToggleMusic call.");
     }
 
     // --- Helpers ---
