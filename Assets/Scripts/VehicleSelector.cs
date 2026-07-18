@@ -46,6 +46,9 @@ public class VehicleSelector : MonoBehaviour
         if (groundScroller == null)
             groundScroller = FindAnyObjectByType<GroundScroller>();
         playerController = GetComponent<PlayerController>();
+        // Single source of truth for which player this selector belongs to.
+        if (playerController != null)
+            playerIndex = playerController.playerIndex;
 
         // Particle velocity must follow emitter rotation, which requires local simulation space.
         if (dirtEmitters != null)
@@ -121,7 +124,7 @@ public class VehicleSelector : MonoBehaviour
         Cycle(-1);
     }
 
-    void Cycle(int direction)
+    void Cycle(int direction, bool persist = true)
     {
         if (vehicleVisuals == null || vehicleVisuals.Length == 0)
             return;
@@ -140,8 +143,12 @@ public class VehicleSelector : MonoBehaviour
             return;   // Only one legal vehicle left; stay put
 
         index = candidate;
-        PlayerPrefs.SetInt(PrefsKey, index);
-        PlayerPrefs.Save();
+        // Auto-dedupe when enabling 2P must not rewrite the player's saved pick.
+        if (persist)
+        {
+            PlayerPrefs.SetInt(PrefsKey, index);
+            PlayerPrefs.Save();
+        }
         Apply();
     }
 
@@ -170,7 +177,7 @@ public class VehicleSelector : MonoBehaviour
             return;
 
         if (index == other.CurrentIndex)
-            Cycle(1);
+            Cycle(1, persist: false);
     }
 
     void Apply()

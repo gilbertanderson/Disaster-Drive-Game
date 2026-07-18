@@ -76,6 +76,13 @@ public class SpawnManager : MonoBehaviour
         FindWallRange();
         CacheMinRockFootprint();
         CacheSpawnX();
+        if (validRockVisuals == null || validRockVisuals.Length == 0)
+        {
+            Debug.LogWarning(
+                "SpawnManager: no usable rock visuals at runtime. " +
+                "Player builds cannot recover via AssetDatabase — assign rockVisuals on the scene SpawnManager.",
+                this);
+        }
         StartCoroutine(SpawnLoop());
     }
 

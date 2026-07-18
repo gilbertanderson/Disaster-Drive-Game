@@ -64,12 +64,15 @@ public class WebGraphicsSettingsTests
         // multi-line containment assertion below.
         string yaml = File.ReadAllText(path).Replace("\r\n", "\n");
 
-        Assert.That(yaml, Does.Contain(
-            "    - line: '|   - m_BuildTarget: WebGLSupport'\n" +
-            "    - line: '|     m_APIs: 1c0000000b000000'\n" +
-            "    - line: '|     m_Automatic: 0'"),
-            $"{profileName}: profile's PlayerSettings copy must pin the Web graphics APIs to WebGPU (0x1c) + WebGL2 (0x0b).");
-        Assert.That(yaml, Does.Contain("    - line: '|   webGLTemplate: PROJECT:DisasterDrive'"),
+        // Assert key tokens independently so a Unity re-serialization that only
+        // changes indentation/quoting still fails on real config drift, not format.
+        Assert.That(yaml, Does.Contain("m_BuildTarget: WebGLSupport"),
+            $"{profileName}: profile must embed a WebGLSupport graphics-API block.");
+        Assert.That(yaml, Does.Contain("m_APIs: 1c0000000b000000"),
+            $"{profileName}: profile's PlayerSettings copy must pin WebGPU (0x1c) + WebGL2 (0x0b).");
+        Assert.That(yaml, Does.Contain("m_Automatic: 0"),
+            $"{profileName}: profile must keep Web graphics APIs explicit (not Automatic).");
+        Assert.That(yaml, Does.Contain("webGLTemplate: PROJECT:DisasterDrive"),
             $"{profileName}: profile's PlayerSettings copy must select the DisasterDrive template.");
     }
 }
