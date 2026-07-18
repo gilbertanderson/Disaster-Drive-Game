@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -60,11 +61,13 @@ public class MobileControlsUI : MonoBehaviour
     private GameManager gameManager;
     private GameObject stickRoot;       // P1 left stick
     private GameObject stickRootP2;     // P2 right stick (2P only)
+    private CanvasGroup stickCanvasGroup;
+    private CanvasGroup stickCanvasGroupP2;
     private GameObject hintRoot;
     private TextMeshProUGUI hintLabel;
     private OnScreenStick onScreenStick;
     private OnScreenStick onScreenStickP2;
-    private bool stickDeviceIgnored;
+    private readonly HashSet<InputDevice> ignoredStickDevices = new HashSet<InputDevice>();
 
     // Last state the hint label was rendered for; avoids rebuilding the
     // string every frame.
@@ -120,9 +123,8 @@ public class MobileControlsUI : MonoBehaviour
         SetLeftStickShown(touchActive);
         SetRightStickShown(touchActive && twoPlayer);
 
-        // The sticks' virtual gamepad device only exists while a stick is
-        // enabled; register it as ignored as soon as it resolves so touch drags
-        // don't get misread as real gamepad input.
+        // Register each stick's virtual gamepad as soon as it resolves so touch
+        // drags don't get misread as real gamepad input.
         TryIgnoreStickDevice(onScreenStick);
         TryIgnoreStickDevice(onScreenStickP2);
 
@@ -131,30 +133,32 @@ public class MobileControlsUI : MonoBehaviour
 
     private void TryIgnoreStickDevice(OnScreenStick stick)
     {
-        if (stickDeviceIgnored || stick == null || stick.control == null)
+        if (stick == null || stick.control == null)
             return;
-        InputModeWatcher.IgnoreDevice(stick.control.device);
-        stickDeviceIgnored = true;
+        var device = stick.control.device;
+        if (ignoredStickDevices.Contains(device))
+            return;
+        ignoredStickDevices.Add(device);
+        InputModeWatcher.IgnoreDevice(device);
     }
 
     private void SetLeftStickShown(bool show)
     {
-        if (stickRoot == null || stickRoot.activeSelf == show)
-            return;
-        stickRoot.SetActive(show);
-        // Disabling the stick destroys its virtual gamepad; the replacement
-        // device created on the next show must be registered as ignored again.
-        if (!show)
-            stickDeviceIgnored = false;
+        SetStickShown(stickCanvasGroup, show);
     }
 
     private void SetRightStickShown(bool show)
     {
-        if (stickRootP2 == null || stickRootP2.activeSelf == show)
+        SetStickShown(stickCanvasGroupP2, show);
+    }
+
+    private static void SetStickShown(CanvasGroup group, bool show)
+    {
+        if (group == null)
             return;
-        stickRootP2.SetActive(show);
-        if (!show)
-            stickDeviceIgnored = false;
+        group.alpha = show ? 1f : 0f;
+        group.interactable = show;
+        group.blocksRaycasts = show;
     }
 
     private void RefreshHint()
@@ -235,12 +239,12 @@ public class MobileControlsUI : MonoBehaviour
         // --- P1 virtual stick, bottom-left → <Gamepad>/leftStick ---
         stickRoot = BuildStick(canvasGo.transform, "StickArea", circle,
             new Vector2(0f, 0f), new Vector2(StickInsetX, StickInsetY),
-            "<Gamepad>/leftStick", out onScreenStick);
+            "<Gamepad>/leftStick", out onScreenStick, out stickCanvasGroup);
 
         // --- P2 virtual stick, bottom-right → <Gamepad>/rightStick ---
         stickRootP2 = BuildStick(canvasGo.transform, "StickAreaP2", circle,
             new Vector2(1f, 0f), new Vector2(-StickInsetX, StickInsetY),
-            "<Gamepad>/rightStick", out onScreenStickP2);
+            "<Gamepad>/rightStick", out onScreenStickP2, out stickCanvasGroupP2);
 
         // --- Controller hints, top-left (same spot as the start screen's own
         // hint text) ---
@@ -259,9 +263,10 @@ public class MobileControlsUI : MonoBehaviour
     }
 
     private static GameObject BuildStick(Transform parent, string name, Sprite circle,
-        Vector2 anchor, Vector2 anchoredPosition, string controlPath, out OnScreenStick stick)
+        Vector2 anchor, Vector2 anchoredPosition, string controlPath, out OnScreenStick stick,
+        out CanvasGroup canvasGroup)
     {
-        var root = new GameObject(name, typeof(RectTransform), typeof(Image));
+        var root = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(OnScreenStick), typeof(CanvasGroup));
         var areaRect = (RectTransform)root.transform;
         areaRect.SetParent(parent, false);
         areaRect.anchorMin = areaRect.anchorMax = anchor;
@@ -271,16 +276,26 @@ public class MobileControlsUI : MonoBehaviour
         var areaImage = root.GetComponent<Image>();
         areaImage.sprite = circle;
         areaImage.color = new Color(1f, 1f, 1f, 0.18f);
+        areaImage.raycastTarget = true;
 
-        var handleGo = new GameObject("StickHandle", typeof(RectTransform), typeof(Image), typeof(OnScreenStick));
+        stick = root.GetComponent<OnScreenStick>();
+        stick.controlPath = controlPath;
+        stick.movementRange = StickMovementRange;
+
+        canvasGroup = root.GetComponent<CanvasGroup>();
+        canvasGroup.alpha = 0f;
+        canvasGroup.interactable = false;
+        canvasGroup.blocksRaycasts = false;
+
+        var handleGo = new GameObject("StickHandle", typeof(RectTransform), typeof(Image));
         var handleRect = (RectTransform)handleGo.transform;
         handleRect.SetParent(areaRect, false);
         handleRect.sizeDelta = new Vector2(StickHandleSize, StickHandleSize);
-        handleGo.GetComponent<Image>().sprite = circle;
-        handleGo.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.55f);
-        stick = handleGo.GetComponent<OnScreenStick>();
-        stick.controlPath = controlPath;
-        stick.movementRange = StickMovementRange;
+        var handleImage = handleGo.GetComponent<Image>();
+        handleImage.sprite = circle;
+        handleImage.color = new Color(1f, 1f, 1f, 0.55f);
+        handleImage.raycastTarget = false;
+
         return root;
     }
 
