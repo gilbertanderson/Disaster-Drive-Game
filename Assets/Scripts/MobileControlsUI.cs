@@ -183,7 +183,7 @@ public class MobileControlsUI : MonoBehaviour
         if (controlsOn)
             return "Drag stick to steer\nTap II or the timer to pause";
         if (mode == InputMode.Touch)
-            return "Touch controls are off\nEnable them in the pause menu";
+            return "Touch controls are off\nTap the timer to pause";
         return mode == InputMode.Gamepad
             ? "Left stick steers\nStart pauses"
             : "WASD steers\nEsc pauses";
