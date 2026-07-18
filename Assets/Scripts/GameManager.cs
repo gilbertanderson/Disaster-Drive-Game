@@ -173,6 +173,8 @@ public class GameManager : MonoBehaviour
     private TwoPlayerUIStyler uiStyler;
     private TMP_Text rotationButtonLabel;  // Label of the runtime-cloned pause-menu rotation toggle
     private TMP_Text touchControlsButtonLabel;  // Label of the runtime-cloned pause-menu touch-controls toggle
+    private TMP_Text rearViewButtonLabel;  // Label of the runtime-cloned rear-camera toggle
+    private RearViewCameraController rearViewCamera;
 
     void Start()
     {
@@ -195,6 +197,12 @@ public class GameManager : MonoBehaviour
             cameraDirector = Camera.main != null ? Camera.main.GetComponent<GameplayCameraDirector>() : null;
             if (cameraDirector == null)
                 cameraDirector = FindAnyObjectByType<GameplayCameraDirector>();
+        }
+        if (Camera.main != null)
+        {
+            rearViewCamera = Camera.main.GetComponent<RearViewCameraController>();
+            if (rearViewCamera == null)
+                rearViewCamera = Camera.main.gameObject.AddComponent<RearViewCameraController>();
         }
 
         if (sunLight == null)
@@ -628,6 +636,14 @@ public class GameManager : MonoBehaviour
         PlayClick();
     }
 
+    // Wired to the pause overlay's runtime-built rear-view button. The rear
+    // camera is an inset view, so toggling it never changes steering axes.
+    public void ToggleRearView()
+    {
+        RearViewCameraController.TogglePreference();
+        PlayClick();
+    }
+
     // Wired to the start screen's player-count toggle button.
     public void TogglePlayerCount()
     {
@@ -779,9 +795,9 @@ public class GameManager : MonoBehaviour
         }
 
         // Rotation toggle for the pause menu: cloned from the music button so
-        // it inherits the sprite, font, colors, and UIButtonFeedback without
-        // touching the scene. Continues the pause menu's 120px button pitch
-        // (Resume -10, Retry -130, Music -250).
+        // it inherits the sprite, font, colors, and UIButtonFeedback. The six
+        // actions use a compact two-column grid that remains visible on wide,
+        // short phone screens.
         if (rotationButtonLabel == null && musicButtonLabel != null)
         {
             var musicButton = musicButtonLabel.GetComponentInParent<Button>(true);
@@ -791,7 +807,7 @@ public class GameManager : MonoBehaviour
                 go.name = "RotationButtonRuntime";
                 var rt = go.GetComponent<RectTransform>();
                 if (rt != null)
-                    rt.anchoredPosition = new Vector2(0f, -370f);
+                    rt.anchoredPosition = new Vector2(190f, -60f);
                 var button = go.GetComponent<Button>();
                 // Instantiate copies the scene-wired persistent ToggleMusic
                 // call, which RemoveAllListeners cannot clear — swap the whole
@@ -803,9 +819,7 @@ public class GameManager : MonoBehaviour
             }
         }
 
-        // Touch-controls toggle for the pause menu, cloned the same way as the
-        // rotation button above so it matches the panel's styling and spacing
-        // (next slot on the 120px pitch after Rotation at -370).
+        // Touch-controls toggle: bottom-left cell in the settings grid.
         if (touchControlsButtonLabel == null && musicButtonLabel != null)
         {
             var musicButton = musicButtonLabel.GetComponentInParent<Button>(true);
@@ -815,12 +829,31 @@ public class GameManager : MonoBehaviour
                 go.name = "TouchControlsButtonRuntime";
                 var rt = go.GetComponent<RectTransform>();
                 if (rt != null)
-                    rt.anchoredPosition = new Vector2(0f, -490f);
+                    rt.anchoredPosition = new Vector2(-190f, -180f);
                 var button = go.GetComponent<Button>();
                 button.onClick = new Button.ButtonClickedEvent();
                 button.onClick.AddListener(ToggleTouchControls);
                 touchControlsButtonLabel = go.GetComponentInChildren<TMP_Text>(true);
                 UpdateTouchControlsButtonLabel();
+            }
+        }
+
+        // Rear-view toggle: bottom-right cell opposite touch controls.
+        if (rearViewButtonLabel == null && musicButtonLabel != null)
+        {
+            var musicButton = musicButtonLabel.GetComponentInParent<Button>(true);
+            if (musicButton != null)
+            {
+                GameObject go = Instantiate(musicButton.gameObject, musicButton.transform.parent);
+                go.name = "RearViewButtonRuntime";
+                var rt = go.GetComponent<RectTransform>();
+                if (rt != null)
+                    rt.anchoredPosition = new Vector2(190f, -180f);
+                var button = go.GetComponent<Button>();
+                button.onClick = new Button.ButtonClickedEvent();
+                button.onClick.AddListener(ToggleRearView);
+                rearViewButtonLabel = go.GetComponentInChildren<TMP_Text>(true);
+                UpdateRearViewButtonLabel();
             }
         }
 
@@ -1239,6 +1272,7 @@ public class GameManager : MonoBehaviour
         MobileControlsUI.TouchControlsChanged += UpdateControlsHint;
         MobileControlsUI.TouchControlsChanged += UpdateTouchControlsButtonLabel;
         OrientationManager.OrientationPreferenceChanged += UpdateRotationButtonLabel;
+        RearViewCameraController.RearViewPreferenceChanged += UpdateRearViewButtonLabel;
     }
 
     void OnDisable()
@@ -1247,6 +1281,7 @@ public class GameManager : MonoBehaviour
         MobileControlsUI.TouchControlsChanged -= UpdateControlsHint;
         MobileControlsUI.TouchControlsChanged -= UpdateTouchControlsButtonLabel;
         OrientationManager.OrientationPreferenceChanged -= UpdateRotationButtonLabel;
+        RearViewCameraController.RearViewPreferenceChanged -= UpdateRearViewButtonLabel;
     }
 
     // Hint reflects whatever device the player last used (see InputModeWatcher)
@@ -1310,6 +1345,12 @@ public class GameManager : MonoBehaviour
         if (touchControlsButtonLabel != null)
             touchControlsButtonLabel.text = MobileControlsUI.TouchControlsActive
                 ? "TOUCH CONTROLS: ON" : "TOUCH CONTROLS: OFF";
+    }
+
+    void UpdateRearViewButtonLabel()
+    {
+        if (rearViewButtonLabel != null)
+            rearViewButtonLabel.text = RearViewCameraController.ButtonLabel;
     }
 
     void UpdateLeaderboardDisplay()

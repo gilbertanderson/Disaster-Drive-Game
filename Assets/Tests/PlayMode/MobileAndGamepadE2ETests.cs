@@ -92,7 +92,10 @@ public class MobileAndGamepadE2ETests : InputTestFixture
         // InputTestFixture restores the previous input state.
         var mobileControls = Object.FindAnyObjectByType<MobileControlsUI>();
         if (mobileControls != null)
-            InvokePrivate(mobileControls, "SetShown", false);
+        {
+            InvokePrivate(mobileControls, "SetLeftStickShown", false);
+            InvokePrivate(mobileControls, "SetRightStickShown", false);
+        }
     }
 
     IEnumerator StartRunAndWaitUntilActive()

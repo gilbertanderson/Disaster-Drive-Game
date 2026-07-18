@@ -28,6 +28,7 @@ public class MobileControlsUI : MonoBehaviour
     private const float StickMovementRange = 105f;
     private const float StickInsetX = 260f;
     private const float StickInsetY = 240f;
+    private const float SafeAreaPadding = 24f;
 
     public const string TouchControlsPrefKey = "TouchControlsEnabled";
     private const int PrefUnloaded = int.MinValue; // Sentinel: PlayerPrefs not read yet
@@ -53,6 +54,10 @@ public class MobileControlsUI : MonoBehaviour
                 return true;
             if (touchControlsPref == PrefOff)
                 return false;
+            // A hardware keyboard attached to iOS Simulator is not evidence
+            // that the player stopped using the phone's touch controls.
+            if (Application.isMobilePlatform)
+                return true;
             return InputModeWatcher.Mode == InputMode.Touch;
         }
     }
@@ -65,6 +70,10 @@ public class MobileControlsUI : MonoBehaviour
     private OnScreenStick onScreenStick;
     private OnScreenStick onScreenStickP2;
     private bool stickDeviceIgnored;
+    private bool stickDeviceP2Ignored;
+    private Canvas controlsCanvas;
+    private Rect lastSafeArea = new Rect(-1f, -1f, -1f, -1f);
+    private Vector2Int lastScreenSize = new Vector2Int(-1, -1);
 
     // Last state the hint label was rendered for; avoids rebuilding the
     // string every frame.
@@ -115,7 +124,7 @@ public class MobileControlsUI : MonoBehaviour
                 return;
         }
 
-        bool touchActive = TouchControlsActive && gameManager.IsGameActive;
+        bool touchActive = TouchControlsActive && gameManager.IsGameActive && !gameManager.IsPaused;
         bool twoPlayer = gameManager.IsTwoPlayerMode;
         SetLeftStickShown(touchActive);
         SetRightStickShown(touchActive && twoPlayer);
@@ -123,18 +132,23 @@ public class MobileControlsUI : MonoBehaviour
         // The sticks' virtual gamepad device only exists while a stick is
         // enabled; register it as ignored as soon as it resolves so touch drags
         // don't get misread as real gamepad input.
-        TryIgnoreStickDevice(onScreenStick);
-        TryIgnoreStickDevice(onScreenStickP2);
+        TryIgnoreStickDevice(onScreenStick, false);
+        TryIgnoreStickDevice(onScreenStickP2, true);
 
+        ApplySafeAreaInsets();
         RefreshHint();
     }
 
-    private void TryIgnoreStickDevice(OnScreenStick stick)
+    private void TryIgnoreStickDevice(OnScreenStick stick, bool playerTwo)
     {
-        if (stickDeviceIgnored || stick == null || stick.control == null)
+        if ((playerTwo ? stickDeviceP2Ignored : stickDeviceIgnored)
+            || stick == null || stick.control == null)
             return;
         InputModeWatcher.IgnoreDevice(stick.control.device);
-        stickDeviceIgnored = true;
+        if (playerTwo)
+            stickDeviceP2Ignored = true;
+        else
+            stickDeviceIgnored = true;
     }
 
     private void SetLeftStickShown(bool show)
@@ -142,6 +156,8 @@ public class MobileControlsUI : MonoBehaviour
         if (stickRoot == null || stickRoot.activeSelf == show)
             return;
         stickRoot.SetActive(show);
+        if (show)
+            TryIgnoreStickDevice(onScreenStick, false);
         // Disabling the stick destroys its virtual gamepad; the replacement
         // device created on the next show must be registered as ignored again.
         if (!show)
@@ -153,8 +169,10 @@ public class MobileControlsUI : MonoBehaviour
         if (stickRootP2 == null || stickRootP2.activeSelf == show)
             return;
         stickRootP2.SetActive(show);
+        if (show)
+            TryIgnoreStickDevice(onScreenStickP2, true);
         if (!show)
-            stickDeviceIgnored = false;
+            stickDeviceP2Ignored = false;
     }
 
     private void RefreshHint()
@@ -222,9 +240,9 @@ public class MobileControlsUI : MonoBehaviour
         var canvasGo = new GameObject("MobileControlsCanvas",
             typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
         canvasGo.transform.SetParent(transform, false);
-        var canvas = canvasGo.GetComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 100;
+        controlsCanvas = canvasGo.GetComponent<Canvas>();
+        controlsCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        controlsCanvas.sortingOrder = 100;
         var scaler = canvasGo.GetComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920f, 1080f);
@@ -249,7 +267,7 @@ public class MobileControlsUI : MonoBehaviour
         hintRect.SetParent(canvasGo.transform, false);
         hintRect.anchorMin = hintRect.anchorMax = new Vector2(0f, 1f);
         hintRect.pivot = new Vector2(0f, 1f);
-        hintRect.anchoredPosition = new Vector2(40f, -40f);
+        hintRect.anchoredPosition = new Vector2(40f, -64f);
         hintRect.sizeDelta = new Vector2(560f, 120f);
         hintLabel = hintRoot.GetComponent<TextMeshProUGUI>();
         hintLabel.fontSize = 32f;
@@ -261,7 +279,7 @@ public class MobileControlsUI : MonoBehaviour
     private static GameObject BuildStick(Transform parent, string name, Sprite circle,
         Vector2 anchor, Vector2 anchoredPosition, string controlPath, out OnScreenStick stick)
     {
-        var root = new GameObject(name, typeof(RectTransform), typeof(Image));
+        var root = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(OnScreenStickTouchArea));
         var areaRect = (RectTransform)root.transform;
         areaRect.SetParent(parent, false);
         areaRect.anchorMin = areaRect.anchorMax = anchor;
@@ -276,12 +294,46 @@ public class MobileControlsUI : MonoBehaviour
         var handleRect = (RectTransform)handleGo.transform;
         handleRect.SetParent(areaRect, false);
         handleRect.sizeDelta = new Vector2(StickHandleSize, StickHandleSize);
-        handleGo.GetComponent<Image>().sprite = circle;
-        handleGo.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.55f);
+        var handleImage = handleGo.GetComponent<Image>();
+        handleImage.sprite = circle;
+        handleImage.color = new Color(1f, 1f, 1f, 0.55f);
+        // The outer ring owns the raycast so every visible part of the control
+        // starts a drag, not just the small center knob.
+        handleImage.raycastTarget = false;
         stick = handleGo.GetComponent<OnScreenStick>();
         stick.controlPath = controlPath;
         stick.movementRange = StickMovementRange;
+        // Isolated pointer actions prevent a virtual gamepad device change
+        // from cancelling an in-progress touch on iOS.
+        stick.useIsolatedInputActions = true;
+        root.GetComponent<OnScreenStickTouchArea>().Initialize(stick);
         return root;
+    }
+
+    private void ApplySafeAreaInsets()
+    {
+        if (controlsCanvas == null || stickRoot == null || stickRootP2 == null)
+            return;
+
+        Rect safeArea = Screen.safeArea;
+        var screenSize = new Vector2Int(Screen.width, Screen.height);
+        if (safeArea == lastSafeArea && screenSize == lastScreenSize)
+            return;
+
+        lastSafeArea = safeArea;
+        lastScreenSize = screenSize;
+
+        float scale = Mathf.Max(controlsCanvas.scaleFactor, 0.01f);
+        float halfStick = StickAreaSize * 0.5f;
+        float leftInset = safeArea.xMin / scale;
+        float rightInset = (Screen.width - safeArea.xMax) / scale;
+        float bottomInset = safeArea.yMin / scale;
+        float leftX = Mathf.Max(StickInsetX, leftInset + halfStick + SafeAreaPadding);
+        float rightX = Mathf.Max(StickInsetX, rightInset + halfStick + SafeAreaPadding);
+        float y = Mathf.Max(StickInsetY, bottomInset + halfStick + SafeAreaPadding);
+
+        ((RectTransform)stickRoot.transform).anchoredPosition = new Vector2(leftX, y);
+        ((RectTransform)stickRootP2.transform).anchoredPosition = new Vector2(-rightX, y);
     }
 
     // Anti-aliased filled circle so the controls need no sprite assets.

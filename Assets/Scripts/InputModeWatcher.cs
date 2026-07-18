@@ -85,8 +85,12 @@ public class InputModeWatcher : MonoBehaviour
             }
         }
 
+        // iOS Simulator commonly exposes the host Mac keyboard. A simulator
+        // shortcut or stray key must not hide touch controls on a phone-sized
+        // build, so keyboard mode switching is desktop-only.
         var keyboard = Keyboard.current;
-        if (keyboard != null && keyboard.anyKey.wasPressedThisFrame)
+        if (!Application.isMobilePlatform
+            && keyboard != null && keyboard.anyKey.wasPressedThisFrame)
             SetMode(InputMode.Keyboard);
     }
 
