@@ -168,6 +168,7 @@ public class GameManager : MonoBehaviour
     private Coroutine pausePanelRoutine;
     private TwoPlayerUIStyler uiStyler;
     private TMP_Text rotationButtonLabel;  // Label of the runtime-cloned pause-menu rotation toggle
+    private TMP_Text touchControlsButtonLabel;  // Label of the runtime-cloned pause-menu touch-controls toggle
 
     void Start()
     {
@@ -571,6 +572,15 @@ public class GameManager : MonoBehaviour
         PlayClick();
     }
 
+    // Wired to the pause overlay's runtime-built touch-controls button (see
+    // EnsureRuntimeUiRefs). The label refresh arrives via the
+    // TouchControlsChanged event.
+    public void ToggleTouchControls()
+    {
+        MobileControlsUI.ToggleTouchControlsPref();
+        PlayClick();
+    }
+
     // Wired to the start screen's player-count toggle button.
     public void TogglePlayerCount()
     {
@@ -681,6 +691,7 @@ public class GameManager : MonoBehaviour
             GameObject p2Popup = Instantiate(penaltyPopupP1.gameObject, penaltyPopupP1.transform.parent);
             p2Popup.name = "PenaltyPopupP2Runtime";
             penaltyPopupP2 = p2Popup.GetComponent<TMP_Text>();
+            penaltyPopupP2.raycastTarget = false;
         }
 
         if (countdownText == null && timerText != null)
@@ -695,6 +706,9 @@ public class GameManager : MonoBehaviour
                 rt.sizeDelta = new Vector2(500f, 140f);
             }
             countdownText.text = "3";
+            // The clone inherits the timer's raycastTarget; it sits mid-screen
+            // and must not swallow taps meant for the game underneath.
+            countdownText.raycastTarget = false;
         }
 
         if (eliminationBannerText == null && timerText != null)
@@ -709,6 +723,7 @@ public class GameManager : MonoBehaviour
                 rt.sizeDelta = new Vector2(900f, 100f);
             }
             eliminationBannerText.text = "PLAYER 1 IS OUT!";
+            eliminationBannerText.raycastTarget = false;
         }
 
         // Rotation toggle for the pause menu: cloned from the music button so
@@ -735,6 +750,43 @@ public class GameManager : MonoBehaviour
                 UpdateRotationButtonLabel();
             }
         }
+
+        // Touch-controls toggle for the pause menu, cloned the same way as the
+        // rotation button above so it matches the panel's styling and spacing
+        // (next slot on the 120px pitch after Rotation at -370).
+        if (touchControlsButtonLabel == null && musicButtonLabel != null)
+        {
+            var musicButton = musicButtonLabel.GetComponentInParent<Button>(true);
+            if (musicButton != null)
+            {
+                GameObject go = Instantiate(musicButton.gameObject, musicButton.transform.parent);
+                go.name = "TouchControlsButtonRuntime";
+                var rt = go.GetComponent<RectTransform>();
+                if (rt != null)
+                    rt.anchoredPosition = new Vector2(0f, -490f);
+                var button = go.GetComponent<Button>();
+                button.onClick = new Button.ButtonClickedEvent();
+                button.onClick.AddListener(ToggleTouchControls);
+                touchControlsButtonLabel = go.GetComponentInChildren<TMP_Text>(true);
+                UpdateTouchControlsButtonLabel();
+            }
+        }
+
+        // Tap-to-pause on the timer HUD. Attached after the clone blocks above
+        // so the countdown/banner copies of the timer don't inherit the handler.
+        AttachTimerPauseTapHandler(timerText);
+        AttachTimerPauseTapHandler(timer2Text);
+    }
+
+    void AttachTimerPauseTapHandler(TMP_Text label)
+    {
+        if (label == null)
+            return;
+        label.raycastTarget = true;
+        var handler = label.GetComponent<TimerPauseTapHandler>();
+        if (handler == null)
+            handler = label.gameObject.AddComponent<TimerPauseTapHandler>();
+        handler.Init(this);
     }
 
     void EnsureIdentityMarkers()
@@ -1098,6 +1150,7 @@ public class GameManager : MonoBehaviour
     {
         InputModeWatcher.ModeChanged += UpdateControlsHint;
         MobileControlsUI.TouchControlsChanged += UpdateControlsHint;
+        MobileControlsUI.TouchControlsChanged += UpdateTouchControlsButtonLabel;
         OrientationManager.OrientationPreferenceChanged += UpdateRotationButtonLabel;
     }
 
@@ -1105,6 +1158,7 @@ public class GameManager : MonoBehaviour
     {
         InputModeWatcher.ModeChanged -= UpdateControlsHint;
         MobileControlsUI.TouchControlsChanged -= UpdateControlsHint;
+        MobileControlsUI.TouchControlsChanged -= UpdateTouchControlsButtonLabel;
         OrientationManager.OrientationPreferenceChanged -= UpdateRotationButtonLabel;
     }
 
@@ -1156,6 +1210,13 @@ public class GameManager : MonoBehaviour
     {
         if (rotationButtonLabel != null)
             rotationButtonLabel.text = OrientationManager.ButtonLabel;
+    }
+
+    void UpdateTouchControlsButtonLabel()
+    {
+        if (touchControlsButtonLabel != null)
+            touchControlsButtonLabel.text = MobileControlsUI.TouchControlsActive
+                ? "TOUCH CONTROLS: ON" : "TOUCH CONTROLS: OFF";
     }
 
     void UpdateLeaderboardDisplay()
