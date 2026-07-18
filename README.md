@@ -125,7 +125,7 @@ The `VehicleSelector` component:
 - `Assets/Tests/` — Edit Mode test suite
 - `Assets/Scenes/My Game.unity` — main playable scene
 - `PROJECT_REFLECTION.md` / `PROJECT_REFLECTION.md` — course reflections
-- `STORYBOOK.md` — component behavior reference for AI agents
+- `STORYBOOK.md` — gameplay component contracts for vehicle selection, input, scoring, spawning, and tests
 
 ## Notes for Developers
 - `VehicleSelector` depends on `GameManager` to gate selection input and emitter playback.
