@@ -31,6 +31,7 @@ public class MobileAndGamepadE2ETests : InputTestFixture
     static bool StickHidden(GameObject stickRoot) =>
         stickRoot == null || stickRoot.GetComponent<CanvasGroup>().alpha < 0.01f;
 
+    GameManager gameManager;
     PlayerController player;
     Gamepad gamepad;
     bool hadPlayerCountKey;
@@ -92,6 +93,9 @@ public class MobileAndGamepadE2ETests : InputTestFixture
         // is persisted in PlayerPrefs and cached in a static field.
         PlayerPrefs.DeleteKey(MobileControlsUI.TouchControlsPrefKey);
         SetPrivateStaticField(typeof(MobileControlsUI), "touchControlsPref", int.MinValue);
+
+        PlayerPrefs.DeleteKey(RearViewManager.RearViewPrefKey);
+        SetPrivateStaticField(typeof(RearViewManager), "rearViewPref", int.MinValue);
 
         // Hide the on-screen controls while this test's input system still
         // exists, so the stick removes its virtual gamepad cleanly before
