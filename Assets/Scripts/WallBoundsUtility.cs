@@ -22,6 +22,8 @@ public static class WallBoundsUtility
         if (wallsParent == null || wallsParent.transform.childCount < 2)
             return result;
 
+        bool sawLow = false;
+        bool sawHigh = false;
         foreach (Transform wall in wallsParent.transform)
         {
             if (wall.GetComponent<BoxCollider>() == null)
@@ -29,12 +31,20 @@ public static class WallBoundsUtility
 
             float halfDepth = wall.localScale.z * 0.5f;
             if (wall.position.z < referencePosition.z)
+            {
                 result.LowZ = Mathf.Max(result.LowZ, wall.position.z + halfDepth);
+                sawLow = true;
+            }
             else
+            {
                 result.HighZ = Mathf.Min(result.HighZ, wall.position.z - halfDepth);
+                sawHigh = true;
+            }
         }
 
-        result.Found = true;
+        // Only treat walls as resolved when both sides contributed a collider;
+        // otherwise callers should keep their serialized fallback ranges.
+        result.Found = sawLow && sawHigh;
         return result;
     }
 

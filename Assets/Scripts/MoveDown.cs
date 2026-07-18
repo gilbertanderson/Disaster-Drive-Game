@@ -169,8 +169,8 @@ public class MoveDown : MonoBehaviour
         if (nearMissChecked || hitPlayer || gameManager == null || !gameManager.IsGameActive)
             return;
 
-        // In two-player mode the dodge credit goes to whichever vehicle the rock
-        // passed closest to; with one player this is just that player.
+        // In two-player mode the dodge credit goes to whichever racing vehicle the
+        // rock passed closest to laterally; eliminated/exiting bodies are ignored.
         PlayerController nearest = NearestActivePlayer(out Transform nearestTransform);
         if (nearestTransform == null)
             return;
@@ -180,29 +180,47 @@ public class MoveDown : MonoBehaviour
         if (rockAlong <= playerAlong)
             return;
 
-        nearMissChecked = true;
         float lateralGap = Mathf.Abs(objectRb.position.z - nearestTransform.position.z);
         if (lateralGap <= nearMissDistance)
+        {
+            // Only burn the one-shot flag after a successful award so an eliminated
+            // neighbor can't permanently consume a survivor's bonus.
             gameManager.OnNearMiss(nearest);
+            nearMissChecked = true;
+        }
+        else
+        {
+            // Rock has cleared the racer with a wide gap — no bonus, don't recheck.
+            nearMissChecked = true;
+        }
     }
 
     PlayerController NearestActivePlayer(out Transform nearestTransform)
     {
         PlayerController nearest = null;
         nearestTransform = null;
-        float bestSqrDistance = float.PositiveInfinity;
+        // Prefer the smallest lateral (Z) gap among racers the rock has already
+        // passed along the travel axis, so 2P credit goes to the lane that was dodged.
+        float bestLateral = float.PositiveInfinity;
+        float rockAlong = Vector3.Dot(objectRb.position, moveDirection);
 
         if (players != null)
         {
             foreach (var candidate in players)
             {
-                if (candidate == null || !candidate.gameObject.activeInHierarchy)
+                if (candidate == null || !candidate.gameObject.activeInHierarchy || candidate.IsExiting)
+                    continue;
+                if (gameManager != null && !gameManager.IsPlayerInteractable(candidate))
                     continue;
 
-                float sqrDistance = (candidate.transform.position - objectRb.position).sqrMagnitude;
-                if (sqrDistance < bestSqrDistance)
+                float playerAlong = Vector3.Dot(candidate.transform.position, moveDirection);
+                if (rockAlong <= playerAlong)
+                    continue;
+
+                float lateralGap = Mathf.Abs(objectRb.position.z - candidate.transform.position.z);
+                if (lateralGap < bestLateral)
                 {
-                    bestSqrDistance = sqrDistance;
+                    bestLateral = lateralGap;
                     nearest = candidate;
                     nearestTransform = candidate.transform;
                 }
@@ -256,6 +274,13 @@ public class MoveDown : MonoBehaviour
         if (isKnockedAside || hitPlayer)
             return;
 
+        // Charge the penalty to whichever player's vehicle took the hit. Exiting /
+        // eliminated vehicles must not consume rocks meant for the survivor.
+        var hitController = player != null ? player.GetComponentInParent<PlayerController>() : null;
+        if (hitController != null && (hitController.IsExiting
+            || (gameManager != null && !gameManager.IsPlayerInteractable(hitController))))
+            return;
+
         hitPlayer = true;
         isKnockedAside = true;
         objectRb.isKinematic = false;   // Rail is kinematic; hand the rock to physics for the shove
@@ -263,15 +288,12 @@ public class MoveDown : MonoBehaviour
                              | RigidbodyConstraints.FreezePositionY;
 
         if (gameManager != null)
-        {
-            // Charge the penalty to whichever player's vehicle took the hit.
-            var hitController = player != null ? player.GetComponentInParent<PlayerController>() : null;
             gameManager.OnPlayerHit(hitPoint, hitController);
-        }
 
         // Push toward whichever side of the vehicle the rock is on, so it "falls" to
         // that side, while keeping its downward speed so it never simply stops.
-        float side = objectRb.position.z >= player.position.z ? 1f : -1f;
+        float playerZ = player != null ? player.position.z : objectRb.position.z;
+        float side = objectRb.position.z >= playerZ ? 1f : -1f;
         objectRb.linearVelocity = moveDirection * speed + Vector3.forward * (side * knockAsideSpeed);
 
         Invoke(nameof(DestroyRock), 0.01f);

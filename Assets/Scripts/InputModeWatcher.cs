@@ -33,6 +33,14 @@ public class InputModeWatcher : MonoBehaviour
         ignoredDevices.Add(device);
     }
 
+    public static bool IsDeviceIgnored(InputDevice device)
+    {
+        if (device == null)
+            return false;
+        ignoredDevices.RemoveWhere(d => !d.added);
+        return ignoredDevices.Contains(device);
+    }
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Bootstrap()
     {

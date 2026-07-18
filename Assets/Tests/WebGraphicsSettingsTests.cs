@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.IO;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -60,16 +62,48 @@ public class WebGraphicsSettingsTests
     {
         string path = Path.Combine(Application.dataPath, "Settings", "Build Profiles", profileName + ".asset");
         Assert.That(File.Exists(path), Is.True, $"Build profile not found: {path}");
-        // Normalize line endings so a CRLF checkout can't break the
-        // multi-line containment assertion below.
         string yaml = File.ReadAllText(path).Replace("\r\n", "\n");
 
-        Assert.That(yaml, Does.Contain(
-            "    - line: '|   - m_BuildTarget: WebGLSupport'\n" +
-            "    - line: '|     m_APIs: 1c0000000b000000'\n" +
-            "    - line: '|     m_Automatic: 0'"),
-            $"{profileName}: profile's PlayerSettings copy must pin the Web graphics APIs to WebGPU (0x1c) + WebGL2 (0x0b).");
-        Assert.That(yaml, Does.Contain("    - line: '|   webGLTemplate: PROJECT:DisasterDrive'"),
+        Assert.That(yaml, Does.Contain("webGLTemplate: PROJECT:DisasterDrive"),
             $"{profileName}: profile's PlayerSettings copy must select the DisasterDrive template.");
+
+        Assert.That(TryParseWebGlApiList(yaml, out var apis), Is.True,
+            $"{profileName}: could not find an explicit WebGLSupport m_APIs list in the profile YAML.");
+        Assert.That(apis, Is.EqualTo(new[]
+        {
+            (int)GraphicsDeviceType.WebGPU,       // 0x1c
+            (int)GraphicsDeviceType.OpenGLES3,    // 0x0b — WebGL2
+        }), $"{profileName}: profile must pin WebGPU then WebGL2 (got [{string.Join(", ", apis)}]).");
+    }
+
+    // Pulls the little-endian GraphicsDeviceType ints from the WebGLSupport
+    // block's m_APIs hex blob, ignoring surrounding YAML quoting/indentation.
+    static bool TryParseWebGlApiList(string yaml, out int[] apis)
+    {
+        apis = System.Array.Empty<int>();
+        // Match WebGLSupport then the next m_APIs hex on a nearby line.
+        var match = Regex.Match(
+            yaml,
+            @"m_BuildTarget:\s*WebGLSupport[\s\S]{0,400}?m_APIs:\s*([0-9a-fA-F]+)",
+            RegexOptions.CultureInvariant);
+        if (!match.Success)
+            return false;
+
+        string hex = match.Groups[1].Value;
+        if (hex.Length < 8 || hex.Length % 8 != 0)
+            return false;
+
+        apis = new int[hex.Length / 8];
+        for (int i = 0; i < apis.Length; i++)
+        {
+            string chunk = hex.Substring(i * 8, 8);
+            // Serialized as little-endian bytes: "1c000000" → 0x1c
+            string le = chunk.Substring(6, 2) + chunk.Substring(4, 2)
+                + chunk.Substring(2, 2) + chunk.Substring(0, 2);
+            if (!int.TryParse(le, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out apis[i]))
+                return false;
+        }
+
+        return true;
     }
 }

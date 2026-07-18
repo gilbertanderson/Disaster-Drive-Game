@@ -3,19 +3,21 @@ using UnityEngine.InputSystem;
 
 public class PlayerController : MonoBehaviour
 {
-    // Which keyboard keys steer this vehicle. Solo play keeps both sets live;
-    // two-player mode gives WASD to P1 and the arrow keys to P2.
+    // Which keys/sticks steer this vehicle. Solo play keeps both keyboard sets
+    // plus the left stick; two-player mode gives WASD + left stick to P1 and
+    // arrows + right stick to P2.
     public enum ControlScheme
     {
         WasdAndArrows,
-        WasdOnly,
+        WasdAndLeftStick,
         ArrowsOnly,
-        ArrowsAndGamepad
+        ArrowsAndRightStick
     }
 
     public int playerIndex;                   // 0 = Player 1, 1 = Player 2
     public float speed = 10f;                 // Movement speed in units per second
     private float baseSpeed = 10f;              // Unmodified speed before vehicle stat multipliers
+    private bool baseSpeedCaptured;           // True once Awake has frozen the authored speed
     private float minX;                       // Left edge of the playable area
     private float maxX;                       // Right edge of the playable area
     private float minZ;                       // Bottom edge of the playable area
@@ -28,7 +30,7 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float exitSpeedMultiplier = 1.5f;
     [SerializeField] private float exitOffScreenMargin = 0.5f;
     [SerializeField] private float exitMinDuration = 0.75f;
-    public float movementDeadzone = 0.25f;    // Ignore tiny input noise for dirt emitter direction
+    public float movementDeadzone = 0.25f;    // Ignore tiny stick/key noise before movement/dirt direction
     [SerializeField] private float crashKnockbackSpeed = 5f;    // Shove applied when two vehicles collide
     [SerializeField] private float crashKnockbackDuration = 0.3f;  // Window where physics, not input, drives the vehicle
     [SerializeField] private float vehicleContactSkin = 0.01f;  // Gap the movement sweep keeps from the other vehicle's surface
@@ -44,8 +46,18 @@ public class PlayerController : MonoBehaviour
     private float knockbackUntil = float.NegativeInfinity;  // While Time.time is below this, the crash shove owns the velocity
     public Vector3 CurrentMovementDirection { get; private set; }
     public float SteerInput { get; private set; }    // Raw -1..1 horizontal axis, ungated/unnormalized, for wheel-steer visuals
+    public bool IsExiting => isExiting;
+    private float movementAnalogMagnitude;            // 0..1 stick deflection used by GetApproachSpeed
     private float wallMinZ = float.NegativeInfinity;  // Inner face of the low-Z wall (unbounded until found)
     private float wallMaxZ = float.PositiveInfinity;  // Inner face of the high-Z wall
+
+    // Capture the inspector speed before VehicleSelector.Awake multiplies it, so
+    // ReapplyStats / SetSpeedMultiplier never square the vehicle's multiplier.
+    void Awake()
+    {
+        baseSpeed = speed;
+        baseSpeedCaptured = true;
+    }
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
@@ -56,8 +68,12 @@ public class PlayerController : MonoBehaviour
         playerRb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
         playerRb.constraints = RigidbodyConstraints.FreezeRotation    // Keep the player upright
                              | RigidbodyConstraints.FreezePositionY;  // Lock to the ground plane (prevents jitter)
-        baseSpeed = speed;
-        movementAction.Enable();                                     // Begin listening for input
+        if (!baseSpeedCaptured)
+        {
+            baseSpeed = speed;
+            baseSpeedCaptured = true;
+        }
+        movementAction?.Enable();                                     // Begin listening for input
 
         if (gameCamera == null)
             gameCamera = Camera.main;                                // Fall back to the main camera if none assigned
@@ -82,11 +98,15 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        // Hold still on the start screen; movement only begins once the Start button is pressed.
-        if (gameManager != null && !gameManager.IsGameActive)
+        // Hold still on the start screen / while paused; movement only runs while
+        // the world is animating (active run, not paused). Exit drive is handled above.
+        if (gameManager != null && !gameManager.IsWorldAnimating)
         {
             CurrentMovementDirection = Vector3.zero;
+            movementAnalogMagnitude = 0f;
             SteerInput = 0f;
+            playerRb.linearVelocity = Vector3.zero;
+            playerRb.angularVelocity = Vector3.zero;
             return;
         }
 
@@ -118,15 +138,28 @@ public class PlayerController : MonoBehaviour
         float verticalInput = movementInput.y;
         SteerInput = horizontalInput;
 
+        float inputMagnitude = movementInput.magnitude;
+        if (inputMagnitude < movementDeadzone)
+        {
+            CurrentMovementDirection = Vector3.zero;
+            movementAnalogMagnitude = 0f;
+            playerRb.linearVelocity = Vector3.zero;
+            playerRb.angularVelocity = Vector3.zero;
+            return;
+        }
+
         Vector3 screenRight = gameCamera.transform.right;
         screenRight.y = 0f;
         screenRight.Normalize();
         Vector3 screenForward = ComputeScreenForward();
 
-        // Build a normalized direction so diagonal movement isn't faster
-        Vector3 movementDirection = (screenRight * horizontalInput + screenForward * verticalInput).normalized;
-        CurrentMovementDirection = movementDirection.magnitude > movementDeadzone ? movementDirection : Vector3.zero;
-        Vector3 movement = movementDirection * speed * Time.fixedDeltaTime;
+        // Normalize for direction, then scale speed by stick deflection so analog
+        // input (real pad or on-screen stick) is not binary full-speed.
+        Vector3 raw = screenRight * horizontalInput + screenForward * verticalInput;
+        Vector3 movementDirection = raw.sqrMagnitude > 0.0001f ? raw.normalized : Vector3.zero;
+        movementAnalogMagnitude = Mathf.Clamp01(inputMagnitude);
+        CurrentMovementDirection = movementDirection;
+        Vector3 movement = movementDirection * (speed * movementAnalogMagnitude) * Time.fixedDeltaTime;
         movement = ClampMovementAgainstOtherVehicle(movement);  // Vehicles are solid: never step through the other player
 
         // Apply movement, then clamp the result inside the playable area
@@ -156,15 +189,31 @@ public class PlayerController : MonoBehaviour
     // authored bindings (both key sets) stay the single-player default.
     public void ApplyControlScheme(ControlScheme scheme)
     {
-        movementAction?.Disable();
+        if (movementAction != null)
+        {
+            movementAction.Disable();
+            movementAction.Dispose();
+            movementAction = null;
+        }
         movementAction = BuildMovementAction(scheme);
         movementAction.Enable();
+    }
+
+    // Drop P2's action when returning to 1P so its arrows/right-stick bindings
+    // stop reading input while the inactive vehicle sits on the start screen.
+    public void DisableMovementInput()
+    {
+        if (movementAction == null)
+            return;
+        movementAction.Disable();
+        movementAction.Dispose();
+        movementAction = null;
     }
 
     static InputAction BuildMovementAction(ControlScheme scheme)
     {
         var action = new InputAction("Movement", InputActionType.Value);
-        if (scheme != ControlScheme.ArrowsOnly && scheme != ControlScheme.ArrowsAndGamepad)
+        if (scheme != ControlScheme.ArrowsOnly && scheme != ControlScheme.ArrowsAndRightStick)
         {
             action.AddCompositeBinding("2DVector")
                 .With("Up", "<Keyboard>/w")
@@ -172,7 +221,7 @@ public class PlayerController : MonoBehaviour
                 .With("Left", "<Keyboard>/a")
                 .With("Right", "<Keyboard>/d");
         }
-        if (scheme != ControlScheme.WasdOnly)
+        if (scheme != ControlScheme.WasdAndLeftStick)
         {
             action.AddCompositeBinding("2DVector")
                 .With("Up", "<Keyboard>/upArrow")
@@ -180,11 +229,15 @@ public class PlayerController : MonoBehaviour
                 .With("Left", "<Keyboard>/leftArrow")
                 .With("Right", "<Keyboard>/rightArrow");
         }
-        // Single player gets the gamepad too (Steam Deck / controller / on-screen
-        // stick); in two-player mode the pad belongs to P2 only.
-        if (scheme == ControlScheme.ArrowsAndGamepad || scheme == ControlScheme.WasdAndArrows)
-        {
+        // 1P: left stick + d-pad. 2P: left stick → P1, right stick + d-pad → P2
+        // (d-pad stays with P2 as before the left/right stick split).
+        if (scheme == ControlScheme.WasdAndArrows || scheme == ControlScheme.WasdAndLeftStick)
             action.AddBinding("<Gamepad>/leftStick");
+        if (scheme == ControlScheme.WasdAndArrows)
+            action.AddBinding("<Gamepad>/dpad");
+        if (scheme == ControlScheme.ArrowsAndRightStick)
+        {
+            action.AddBinding("<Gamepad>/rightStick");
             action.AddBinding("<Gamepad>/dpad");
         }
         return action;
@@ -250,7 +303,9 @@ public class PlayerController : MonoBehaviour
         foreach (RaycastHit hit in playerRb.SweepTestAll(direction, distance, QueryTriggerInteraction.Ignore))
         {
             var other = hit.collider.GetComponentInParent<PlayerController>();
-            if (other == null || other == this)
+            if (other == null || other == this || other.IsExiting)
+                continue;
+            if (gameManager != null && !gameManager.IsPlayerInteractable(other))
                 continue;
 
             Vector3 towardOther = other.transform.position - transform.position;
@@ -413,18 +468,32 @@ public class PlayerController : MonoBehaviour
         towardOther.y = 0f;
         if (towardOther.sqrMagnitude < 0.001f)
             return 0f;
-        return Mathf.Max(0f, Vector3.Dot(CurrentMovementDirection * speed, towardOther.normalized));
+        // Scale by stick deflection so a light nudge isn't blamed as a full-speed ram.
+        // Digital keys / tests that only set CurrentMovementDirection count as full press.
+        float analog = movementAnalogMagnitude > 0.001f
+            ? Mathf.Clamp01(movementAnalogMagnitude)
+            : (CurrentMovementDirection.sqrMagnitude > 0.001f ? 1f : 0f);
+        float approachSpeed = speed * analog;
+        return Mathf.Max(0f, Vector3.Dot(CurrentMovementDirection * approachSpeed, towardOther.normalized));
     }
 
     public void SetSpeedMultiplier(float multiplier)
     {
-        if (baseSpeed <= 0.001f)
+        if (!baseSpeedCaptured || baseSpeed <= 0.001f)
+        {
             baseSpeed = speed;
+            baseSpeedCaptured = true;
+        }
         speed = baseSpeed * multiplier;
     }
 
     public void ResetSpeedToBase()
     {
+        if (!baseSpeedCaptured || baseSpeed <= 0.001f)
+        {
+            baseSpeed = speed;
+            baseSpeedCaptured = true;
+        }
         speed = baseSpeed;
     }
 
@@ -439,6 +508,11 @@ public class PlayerController : MonoBehaviour
             // While either vehicle is still being shoved apart, contacts can break and
             // re-form every physics step; don't report those as fresh crashes.
             if (Time.time < knockbackUntil || Time.time < otherVehicle.knockbackUntil)
+                return;
+            if (isExiting || otherVehicle.IsExiting)
+                return;
+            if (gameManager != null
+                && (!gameManager.IsPlayerInteractable(this) || !gameManager.IsPlayerInteractable(otherVehicle)))
                 return;
 
             Vector3 vehicleHitPoint = collision.contactCount > 0

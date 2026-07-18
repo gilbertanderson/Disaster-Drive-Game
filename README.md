@@ -20,7 +20,7 @@ The project uses the new Input System, URP-compatible lighting, and keyboard-dri
 1. Press **Play** in the Unity Editor.
 2. On the start screen, pick a vehicle with **&lt;** / **&gt;** (or **A** / **D**).
 3. Click **Drive** to begin a run.
-4. Steer with **WASD** or **arrow keys**; avoid rocks (each hit costs time).
+4. Steer with **WASD** or **arrow keys** (1P). In **2 Players** mode: P1 uses WASD / left stick, P2 uses arrows / right stick; on touch, left and right on-screen sticks match that split. Avoid rocks (each hit costs time).
 5. Skim past rocks without hitting for a **+2s** near-miss bonus (with sound feedback).
 6. Press **Esc** to pause (credits appear in the top-right of the pause overlay).
 7. When time runs out, the vehicle drives off screen, then the game over panel appears — click **Retry** to reload.
@@ -70,7 +70,7 @@ Tests cover vehicle selection, dirt emitters, game-over exit drive, near-miss sc
 
 ### Mobile & gamepad input tests
 
-Gamepad and touch input is **simulated** with the Input System's `InputTestFixture` — no controller or touchscreen hardware is needed. Edit Mode suites cover input-mode detection (`InputModeWatcherTests`), the touch-controls toggle preference (`MobileControlsToggleTests`), the screen-orientation preference behind the pause menu's ROTATION toggle (`OrientationPreferenceTests`), the per-scheme movement bindings including left stick and d-pad (`PlayerControllerControlSchemeTests`), and the Esc/Start pause hotkeys (`GameManagerPauseInputTests`). The Play Mode suite `OrientationToggleE2ETests` verifies the runtime-built ROTATION button in the pause menu. The Play Mode suite `MobileAndGamepadE2ETests` drives the real scene with a simulated gamepad and touchscreen: stick/d-pad movement, Start-button pause and resume, touch-mode switching, the on-screen stick and the persistent top-left pause button, the TOUCH CONTROLS toggle (top left, under the controls hints, on both the start screen and during runs), and the controls-hint text.
+Gamepad and touch input is **simulated** with the Input System's `InputTestFixture` — no controller or touchscreen hardware is needed. Edit Mode suites cover input-mode detection (`InputModeWatcherTests`), the touch-controls toggle preference (`MobileControlsToggleTests`), the screen-orientation preference behind the pause menu's ROTATION toggle (`OrientationPreferenceTests`), the per-scheme movement bindings including left/right sticks (`PlayerControllerControlSchemeTests`), and the Esc/Start pause hotkeys (`GameManagerPauseInputTests`). The Play Mode suite `OrientationToggleE2ETests` verifies the runtime-built ROTATION button in the pause menu. The Play Mode suite `MobileAndGamepadE2ETests` drives the real scene with a simulated gamepad and touchscreen: stick/d-pad movement, Start-button pause and resume, touch-mode switching, the on-screen stick(s) and the persistent top-left pause button, the TOUCH CONTROLS toggle (top left, under the controls hints, on both the start screen and during runs), and the controls-hint text.
 
 Enabling this required listing `com.unity.inputsystem` under `testables` in `Packages/manifest.json`, which also makes the Input System package's **own** tests appear in Test Runner — they can be ignored (or filtered out by selecting only the `DisasterTests` / `DisasterPlayModeTests` assemblies).
 
@@ -102,7 +102,7 @@ Unity MCP can also run Edit Mode tests when the Editor is connected.
 - Camera-based screen bounds with wall clamping.
 - Endless runner scroll (ground, trees, rocks) with difficulty ramping.
 - Live run UI: wave number, dodge streak, low-time timer warning.
-- Adaptive controls: keyboard, gamepad, and an on-screen virtual stick (bottom-left), with a persistent top-left stack — controller hints, a TOUCH CONTROLS toggle (start screen and in-game), and a pause button that stays available during runs for every input device; the toggle choice persists via `PlayerPrefs`.
+- Adaptive controls: keyboard, gamepad, and on-screen virtual sticks (P1 bottom-left / left stick, P2 bottom-right / right stick in 2P), with a persistent top-left stack — controller hints, a TOUCH CONTROLS toggle (start screen and in-game), and a pause button that stays available during runs for every input device; the toggle choice persists via `PlayerPrefs`.
 - Near-miss bonus with sound and `+2s` popup.
 - Game-over exit: vehicle drives off screen while the world keeps animating, then everything stops.
 - Camera shake on rock impacts (screen-plane jitter).
