@@ -56,17 +56,30 @@ public class GameManagerPauseInputTests : InputTestFixture
     public void GamepadStartButton_IgnoresVirtualPadButAcceptsRealPad()
     {
         TestReflectionHelpers.SetPrivateProperty(gameManager, "IsGameActive", true);
-        InputModeWatcher.IgnoreDevice(gamepad);
+        var virtualPad = gamepad;
+        InputModeWatcher.IgnoreDevice(virtualPad);
+        var realPad = InputSystem.AddDevice<Gamepad>();
 
-        Press(gamepad.startButton);
+        // Virtual (ignored) Start must not pause.
+        Press(virtualPad.startButton, queueEventOnly: true);
+        InputSystem.Update();
         PumpGameManager();
 
         Assert.That(gameManager.IsPaused, Is.False,
             "The on-screen stick's virtual gamepad must not pause the run.");
 
-        Release(gamepad.startButton);
-        var realPad = InputSystem.AddDevice<Gamepad>();
-        Press(realPad.startButton);
+        Release(virtualPad.startButton, queueEventOnly: true);
+        InputSystem.Update();
+
+        // Real Start must pause even while the virtual pad stays ignored.
+        // queueEventOnly + explicit Update keeps wasPressedThisFrame unambiguous
+        // across the multi-device setup (default Press() can flush an extra frame).
+        Press(realPad.startButton, queueEventOnly: true);
+        InputSystem.Update();
+        Assert.That(realPad.startButton.wasPressedThisFrame, Is.True,
+            "Precondition: real pad Start should report wasPressedThisFrame.");
+        Assert.That(InputModeWatcher.IsDeviceIgnored(realPad), Is.False,
+            "Precondition: the real pad must not be in the ignored set.");
         PumpGameManager();
 
         Assert.That(gameManager.IsPaused, Is.True,
