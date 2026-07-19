@@ -40,8 +40,14 @@ public class GameManager : MonoBehaviour
     // returns to its scene-authored preview position.
     // Lateral (world Z) start slots. Screen-right is world −Z with the top-down
     // camera, so these are centered on the camera/road line at Z = 2.5.
-    private const float Player1VehicleSinglePlayerZ = 2.75f;
+    private const float Player1VehicleSinglePlayerZ = 2.5f;
     private const float Player1VehicleTwoPlayerZ = 8.5f;
+
+    // Forward (world X) start slot, single-player only. Screen-up is world +X
+    // with the top-down camera, so this controls how far below the Drive
+    // button the vehicle sits on the start screen. Two-player mode keeps the
+    // scene-authored X (its side-by-side P1/P2 layout is unrelated to this).
+    private const float Player1VehicleSinglePlayerX = -18f;
 
     [Header("Timer")]
     [SerializeField] private float startTime = 60f;   // Seconds on the clock at the start of a run
@@ -629,12 +635,12 @@ public class GameManager : MonoBehaviour
         PlayClick();
     }
 
-    // Wired to the pause overlay's runtime-built rear-view button (see
-    // EnsureRuntimeUiRefs). The label refresh arrives via the
-    // RearViewPreferenceChanged event.
+    // Wired to the pause overlay's runtime-built VIEW button (see
+    // EnsureRuntimeUiRefs). Cycles Normal -> Rear -> Isometric -> Normal.
+    // The label refresh arrives via the RearViewPreferenceChanged event.
     public void ToggleRearView()
     {
-        RearViewManager.TogglePreference();
+        RearViewManager.CycleView();
         PlayClick();
     }
 
@@ -689,6 +695,8 @@ public class GameManager : MonoBehaviour
         {
             Vector3 vehiclePos = p1.transform.position;
             vehiclePos.z = twoPlayer ? Player1VehicleTwoPlayerZ : Player1VehicleSinglePlayerZ;
+            if (!twoPlayer)
+                vehiclePos.x = Player1VehicleSinglePlayerX;
             p1.transform.position = vehiclePos;
         }
         if (p1 != null)

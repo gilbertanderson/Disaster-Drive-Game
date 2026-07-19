@@ -1170,6 +1170,7 @@ MonoBehaviour:
   introRig: {fileID: 2100000001}
   frontAnchor: {fileID: 2100000003}
   rearAnchor: {fileID: 2100000005}
+  isoAnchor: {fileID: 421522408}
   cameraShake: {fileID: 330585548}
   beatDuration: 0.8
 --- !u!1001 &331094898
@@ -1604,6 +1605,37 @@ MonoBehaviour:
   m_ShadowLayerMask: 1
   m_RenderingLayers: 1
   m_ShadowRenderingLayers: 1
+--- !u!1 &421522407
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 421522408}
+  m_Layer: 0
+  m_Name: IntroCameraIso
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &421522408
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 421522407}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0.3394444, y: 0.4266001, z: -0.17670357, w: 0.81949115}
+  m_LocalPosition: {x: -14, y: 26, z: 8.5}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 2100000001}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &492042392
 GameObject:
   m_ObjectHideFlags: 0
@@ -8841,6 +8873,7 @@ Transform:
   m_Children:
   - {fileID: 2100000003}
   - {fileID: 2100000005}
+  - {fileID: 421522408}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2100000002

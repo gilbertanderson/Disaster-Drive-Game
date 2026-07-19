@@ -9,6 +9,7 @@ public class GameplayCameraDirector : MonoBehaviour
     [SerializeField] private Transform introRig;
     [SerializeField] private Transform frontAnchor;
     [SerializeField] private Transform rearAnchor;
+    [SerializeField] private Transform isoAnchor;
     [SerializeField] private CameraShake cameraShake;
     [SerializeField] private float beatDuration = 0.8f;
 
@@ -16,7 +17,9 @@ public class GameplayCameraDirector : MonoBehaviour
     private Quaternion gameplayRotation;
     private Vector3 rearPosition;
     private Quaternion rearRotation;
-    private bool rearViewActive;
+    private Vector3 isoPosition;
+    private Quaternion isoRotation;
+    private RearViewManager.ViewMode currentView = RearViewManager.ViewMode.Normal;
     private bool introActive;
     private bool introComplete;
     private int currentBeat = -1;
@@ -27,20 +30,20 @@ public class GameplayCameraDirector : MonoBehaviour
     private Quaternion beatTargetRotation;
     private bool beatInProgress;
 
-    public bool RearViewActive => rearViewActive;
+    public bool RearViewActive => currentView != RearViewManager.ViewMode.Normal;
 
     void Awake()
     {
         CacheGameplayPose();
         CacheRearPose();
+        CacheIsoPose();
         if (cameraShake == null)
             cameraShake = GetComponent<CameraShake>();
     }
 
     void Start()
     {
-        if (RearViewManager.RearViewEnabled)
-            ApplyRearView(true);
+        ApplyViewMode(RearViewManager.CurrentMode);
     }
 
     void Update()
@@ -70,16 +73,55 @@ public class GameplayCameraDirector : MonoBehaviour
         rearRotation = Quaternion.Euler(28f, 90f, 0f);
     }
 
+    public void CacheIsoPose()
+    {
+        if (isoAnchor != null)
+        {
+            isoPosition = isoAnchor.position;
+            isoRotation = isoAnchor.rotation;
+            return;
+        }
+
+        // Fallback when the scene anchor is missing: elevated 3/4 view behind
+        // and above the vehicle, higher and less steep than the rear chase
+        // pose (Tesla-FSD-style rear isometric).
+        isoPosition = gameplayPosition + new Vector3(-14f, 10f, 6f);
+        isoRotation = Quaternion.Euler(45f, 55f, 0f);
+    }
+
+    // Back-compat entry point: true/false maps to RearChase/Normal. Prefer
+    // ApplyViewMode for the full 3-way selector.
     public void ApplyRearView(bool rear)
+    {
+        ApplyViewMode(rear ? RearViewManager.ViewMode.RearChase : RearViewManager.ViewMode.Normal);
+    }
+
+    public void ApplyViewMode(RearViewManager.ViewMode mode)
     {
         if (introActive)
             return;
 
-        rearViewActive = rear;
+        currentView = mode;
         CacheRearPose();
+        CacheIsoPose();
 
-        Vector3 targetPos = rear ? rearPosition : gameplayPosition;
-        Quaternion targetRot = rear ? rearRotation : gameplayRotation;
+        Vector3 targetPos;
+        Quaternion targetRot;
+        switch (mode)
+        {
+            case RearViewManager.ViewMode.RearChase:
+                targetPos = rearPosition;
+                targetRot = rearRotation;
+                break;
+            case RearViewManager.ViewMode.Isometric:
+                targetPos = isoPosition;
+                targetRot = isoRotation;
+                break;
+            default:
+                targetPos = gameplayPosition;
+                targetRot = gameplayRotation;
+                break;
+        }
         transform.SetPositionAndRotation(targetPos, targetRot);
 
         if (cameraShake != null)
@@ -90,6 +132,7 @@ public class GameplayCameraDirector : MonoBehaviour
     {
         CacheGameplayPose();
         CacheRearPose();
+        CacheIsoPose();
 
         if (cameraShake != null)
             cameraShake.StopAndReset();
@@ -191,10 +234,15 @@ public class GameplayCameraDirector : MonoBehaviour
             position = frontAnchor.position;
             rotation = frontAnchor.rotation;
         }
-        else if (rearViewActive)
+        else if (currentView == RearViewManager.ViewMode.RearChase)
         {
             position = rearPosition;
             rotation = rearRotation;
+        }
+        else if (currentView == RearViewManager.ViewMode.Isometric)
+        {
+            position = isoPosition;
+            rotation = isoRotation;
         }
         else
         {

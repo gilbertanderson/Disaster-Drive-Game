@@ -74,6 +74,13 @@ public class WallScroller : MonoBehaviour
         if (gameManager != null && !gameManager.IsWorldAnimating)
             return;
 
+        // Recomputed every frame rather than cached once at Start — a stale
+        // camera/aspect snapshot (window resize, orientation change) would
+        // otherwise desync the recycle point from the actual screen edge,
+        // same class of bug SpawnManager.CacheSpawnX already guards against
+        // for rock spawn positions.
+        UpdateBottomThreshold();
+
         if (Vector3.Dot(transform.position, moveDirection) > bottomThreshold)
         {
             if (spawnManager != null)

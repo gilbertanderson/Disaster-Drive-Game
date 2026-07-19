@@ -1,41 +1,70 @@
 using System;
 using UnityEngine;
 
-// Owns the player's rear-view camera preference and applies it through
-// GameplayCameraDirector. Toggled from the pause menu; persisted in PlayerPrefs.
+// Owns the player's preferred in-run camera view — normal top-down follow,
+// a low rear-chase pose, or an elevated rear isometric pose — applied via
+// GameplayCameraDirector.ApplyViewMode and persisted across sessions. Cycled
+// by the pause menu's VIEW button (see GameManager.CycleView).
 public static class RearViewManager
 {
+    public enum ViewMode
+    {
+        Normal = 0,
+        RearChase = 1,
+        Isometric = 2,
+    }
+
+    private const int ModeCount = 3;
+
+    // Key name kept from the original on/off toggle for save compatibility.
     public const string RearViewPrefKey = "RearViewEnabled";
-    private const int PrefUnloaded = int.MinValue;
-    private const int PrefOff = 0;
-    private const int PrefOn = 1;
+    private const int PrefUnloaded = int.MinValue; // Sentinel: PlayerPrefs not read yet
 
-    private static int rearViewPref = PrefUnloaded;
+    private static int viewModePref = PrefUnloaded;
 
+    // Raised when the player cycles the VIEW button, so the pause menu's
+    // button label (GameManager) can re-render without polling.
     public static event Action RearViewPreferenceChanged;
 
-    public static bool RearViewEnabled
+    public static ViewMode CurrentMode
     {
         get
         {
-            if (rearViewPref == PrefUnloaded)
-                rearViewPref = PlayerPrefs.GetInt(RearViewPrefKey, PrefOff);
-            return rearViewPref == PrefOn;
+            if (viewModePref == PrefUnloaded)
+            {
+                int stored = PlayerPrefs.GetInt(RearViewPrefKey, (int)ViewMode.Normal);
+                viewModePref = Mathf.Clamp(stored, 0, ModeCount - 1);
+            }
+            return (ViewMode)viewModePref;
         }
     }
 
-    public static string ButtonLabel =>
-        RearViewEnabled ? "CAMERA: ON" : "CAMERA: OFF";
+    // Back-compat: true whenever a non-normal view is active.
+    public static bool RearViewEnabled => CurrentMode != ViewMode.Normal;
 
-    public static void TogglePreference()
+    public static string ButtonLabel => CurrentMode switch
     {
-        SetRearViewPref(RearViewEnabled ? PrefOff : PrefOn);
+        ViewMode.RearChase => "VIEW: REAR",
+        ViewMode.Isometric => "VIEW: ISO",
+        _ => "VIEW: NORMAL",
+    };
+
+    public static void CycleView()
+    {
+        SetMode((ViewMode)(((int)CurrentMode + 1) % ModeCount));
     }
 
-    private static void SetRearViewPref(int value)
+    // Back-compat entry point for callers/tests expecting a simple on/off
+    // toggle: flips between Normal and RearChase only.
+    public static void TogglePreference()
     {
-        rearViewPref = value;
-        PlayerPrefs.SetInt(RearViewPrefKey, value);
+        SetMode(CurrentMode == ViewMode.Normal ? ViewMode.RearChase : ViewMode.Normal);
+    }
+
+    private static void SetMode(ViewMode mode)
+    {
+        viewModePref = (int)mode;
+        PlayerPrefs.SetInt(RearViewPrefKey, viewModePref);
         PlayerPrefs.Save();
         RearViewPreferenceChanged?.Invoke();
         ApplyToCameraDirector();
@@ -45,9 +74,7 @@ public static class RearViewManager
     {
         var director = Camera.main != null
             ? Camera.main.GetComponent<GameplayCameraDirector>()
-            : null;
-        if (director == null)
-            director = UnityEngine.Object.FindAnyObjectByType<GameplayCameraDirector>();
-        director?.ApplyRearView(RearViewEnabled);
+            : UnityEngine.Object.FindAnyObjectByType<GameplayCameraDirector>();
+        director?.ApplyViewMode(CurrentMode);
     }
 }
