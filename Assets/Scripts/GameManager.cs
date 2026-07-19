@@ -788,20 +788,22 @@ public class GameManager : MonoBehaviour
             eliminationBannerText.raycastTarget = false;
         }
 
-        // Rotation toggle for the pause menu: cloned from the music button so
-        // it inherits the sprite, font, colors, and UIButtonFeedback without
-        // touching the scene. Continues the pause menu's 120px button pitch
-        // (Resume -10, Retry -130, Music -250).
+        // Orientation toggle for the pause menu: cloned from the music button
+        // so it inherits the sprite, font, colors, and UIButtonFeedback
+        // without touching the scene. Continues the pause menu's 100px button
+        // pitch (Resume 80, Retry -20, Music -120) — compressed from the
+        // original 120px pitch so all 6 buttons fit within the panel's
+        // +/-540 vertical bounds instead of running off the bottom edge.
         if (rotationButtonLabel == null && musicButtonLabel != null)
         {
             var musicButton = musicButtonLabel.GetComponentInParent<Button>(true);
             if (musicButton != null)
             {
                 GameObject go = Instantiate(musicButton.gameObject, musicButton.transform.parent);
-                go.name = "RotationButtonRuntime";
+                go.name = "OrientationButtonRuntime";
                 var rt = go.GetComponent<RectTransform>();
                 if (rt != null)
-                    rt.anchoredPosition = new Vector2(0f, -370f);
+                    rt.anchoredPosition = new Vector2(0f, -220f);
                 var button = go.GetComponent<Button>();
                 // Instantiate copies the scene-wired persistent ToggleMusic
                 // call, which RemoveAllListeners cannot clear — swap the whole
@@ -813,9 +815,9 @@ public class GameManager : MonoBehaviour
             }
         }
 
-        // Touch-controls toggle for the pause menu, cloned the same way as the
-        // rotation button above so it matches the panel's styling and spacing
-        // (next slot on the 120px pitch after Rotation at -370).
+        // Touch-controls toggle for the pause menu, cloned the same way as
+        // the orientation button above so it matches the panel's styling and
+        // spacing (next slot on the 100px pitch after Orientation at -220).
         if (touchControlsButtonLabel == null && musicButtonLabel != null)
         {
             var musicButton = musicButtonLabel.GetComponentInParent<Button>(true);
@@ -825,7 +827,7 @@ public class GameManager : MonoBehaviour
                 go.name = "TouchControlsButtonRuntime";
                 var rt = go.GetComponent<RectTransform>();
                 if (rt != null)
-                    rt.anchoredPosition = new Vector2(0f, -490f);
+                    rt.anchoredPosition = new Vector2(0f, -320f);
                 var button = go.GetComponent<Button>();
                 button.onClick = new Button.ButtonClickedEvent();
                 button.onClick.AddListener(ToggleTouchControls);
@@ -835,7 +837,7 @@ public class GameManager : MonoBehaviour
         }
 
         // Rear-view camera toggle for the pause menu (next slot after touch
-        // controls at -490).
+        // controls at -320).
         if (rearViewButtonLabel == null && musicButtonLabel != null)
         {
             var musicButton = musicButtonLabel.GetComponentInParent<Button>(true);
@@ -845,7 +847,7 @@ public class GameManager : MonoBehaviour
                 go.name = "RearViewButtonRuntime";
                 var rt = go.GetComponent<RectTransform>();
                 if (rt != null)
-                    rt.anchoredPosition = new Vector2(0f, -610f);
+                    rt.anchoredPosition = new Vector2(0f, -420f);
                 var button = go.GetComponent<Button>();
                 button.onClick = new Button.ButtonClickedEvent();
                 button.onClick.AddListener(ToggleRearView);
@@ -1270,6 +1272,25 @@ public class GameManager : MonoBehaviour
         MobileControlsUI.TouchControlsChanged += UpdateTouchControlsButtonLabel;
         OrientationManager.OrientationPreferenceChanged += UpdateRotationButtonLabel;
         RearViewManager.RearViewPreferenceChanged += UpdateRearViewButtonLabel;
+
+        // Runtime-added Button.onClick listeners (see EnsureRuntimeUiRefs) are
+        // non-persistent and do not survive a script-recompile domain reload
+        // during Play mode — the buttons stay visible with correct labels but
+        // silently stop responding to clicks. Re-wiring here on every OnEnable
+        // (which Unity calls again after each domain reload) keeps them alive
+        // the same way the static event subscriptions above already are.
+        RewireRuntimeButton(rotationButtonLabel, ToggleRotation);
+        RewireRuntimeButton(touchControlsButtonLabel, ToggleTouchControls);
+        RewireRuntimeButton(rearViewButtonLabel, ToggleRearView);
+    }
+
+    void RewireRuntimeButton(TMP_Text label, UnityEngine.Events.UnityAction handler)
+    {
+        if (label == null) return;
+        var button = label.GetComponentInParent<Button>(true);
+        if (button == null) return;
+        button.onClick = new Button.ButtonClickedEvent();
+        button.onClick.AddListener(handler);
     }
 
     void OnDisable()
@@ -1341,7 +1362,7 @@ public class GameManager : MonoBehaviour
     {
         if (touchControlsButtonLabel != null)
             touchControlsButtonLabel.text = MobileControlsUI.TouchControlsActive
-                ? "TOUCH CONTROLS: ON" : "TOUCH CONTROLS: OFF";
+                ? "TOUCH: ON" : "TOUCH: OFF";
     }
 
     void UpdateRearViewButtonLabel()

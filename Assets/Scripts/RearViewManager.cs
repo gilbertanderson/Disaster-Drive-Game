@@ -25,7 +25,7 @@ public static class RearViewManager
     }
 
     public static string ButtonLabel =>
-        RearViewEnabled ? "REAR VIEW: ON" : "REAR VIEW: OFF";
+        RearViewEnabled ? "CAMERA: ON" : "CAMERA: OFF";
 
     public static void TogglePreference()
     {
