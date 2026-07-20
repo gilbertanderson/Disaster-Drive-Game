@@ -33,6 +33,7 @@ public class VehicleSelector : MonoBehaviour
     private Transform[] wheelTransforms = System.Array.Empty<Transform>();
     private float[] wheelRadii = System.Array.Empty<float>();
     private bool[] wheelIsFront = System.Array.Empty<bool>();
+    private bool[] wheelCanSteer = System.Array.Empty<bool>();
     private float[] wheelRollAngles = System.Array.Empty<float>();
     private Quaternion[] wheelBaseRotations = System.Array.Empty<Quaternion>();
     private float currentSteerAngle;
@@ -636,6 +637,7 @@ public class VehicleSelector : MonoBehaviour
         wheelTransforms = System.Array.Empty<Transform>();
         wheelRadii = System.Array.Empty<float>();
         wheelIsFront = System.Array.Empty<bool>();
+        wheelCanSteer = System.Array.Empty<bool>();
         wheelRollAngles = System.Array.Empty<float>();
         wheelBaseRotations = System.Array.Empty<Quaternion>();
         currentSteerAngle = 0f;
@@ -644,15 +646,10 @@ public class VehicleSelector : MonoBehaviour
         if (visual == null)
             return;
 
-        // The Jeep's wheel meshes don't roll convincingly with this generic spin logic
-        // (confirmed visually), so it's excluded and left with static wheels.
-        if (visual.name == "Prefab_K-131")
-            return;
-
         var renderers = visual.GetComponentsInChildren<MeshRenderer>(false);
         var wheels = new List<Transform>(4);
         var radii = new List<float>(4);
-        var zLocal = new List<float>(4);
+        var localCenters = new List<Vector3>(4);
         var baseRotations = new List<Quaternion>(4);
 
         foreach (var mr in renderers)
@@ -664,33 +661,50 @@ public class VehicleSelector : MonoBehaviour
 
             wheels.Add(mr.transform);
             radii.Add(EstimateWheelRadius(mr.bounds));
+            // Capture the importer's rest pose (often a uniform Z-up→Y-up correction like
+            // (270,0,0) on every sub-mesh). TickWheelSpin rolls on top of this instead of
+            // overwriting it, which would snap/misalign the mesh and can read as spinning
+            // backwards.
             baseRotations.Add(mr.transform.localRotation);
-            // Some imported models (e.g. FBX packs authored in a Z-up tool) keep every
-            // sub-mesh's Transform at the same local position and bake the real per-part
-            // offset into the mesh's own vertex data instead. Bounds.center reflects the
-            // actual geometric position either way; transform.position would not.
-            zLocal.Add(visual.transform.InverseTransformPoint(mr.bounds.center).z);
+            // Some imported models keep every sub-mesh Transform at the same localPosition
+            // and bake the real per-part offset into vertex data. Bounds.center reflects the
+            // actual geometric position either way; transform.localPosition would not.
+            localCenters.Add(visual.transform.InverseTransformPoint(mr.bounds.center));
         }
 
         if (wheels.Count == 0)
             return;
 
-        float minZ = zLocal[0];
-        float maxZ = zLocal[0];
-        for (int i = 1; i < zLocal.Count; i++)
+        // Nose/tail is whichever horizontal axis has the larger wheel spread. Most vehicles
+        // here are authored with front/rear on local Z (and yawed 90° in-scene); packs that
+        // leave the visual at identity often separate front/rear on local X instead.
+        float minX = localCenters[0].x, maxX = localCenters[0].x;
+        float minZ = localCenters[0].z, maxZ = localCenters[0].z;
+        for (int i = 1; i < localCenters.Count; i++)
         {
-            minZ = Mathf.Min(minZ, zLocal[i]);
-            maxZ = Mathf.Max(maxZ, zLocal[i]);
+            minX = Mathf.Min(minX, localCenters[i].x);
+            maxX = Mathf.Max(maxX, localCenters[i].x);
+            minZ = Mathf.Min(minZ, localCenters[i].z);
+            maxZ = Mathf.Max(maxZ, localCenters[i].z);
         }
-        float frontThreshold = (minZ + maxZ) * 0.5f;
+        bool classifyAlongX = (maxX - minX) > (maxZ - minZ);
+        float frontThreshold = classifyAlongX ? (minX + maxX) * 0.5f : (minZ + maxZ) * 0.5f;
 
         wheelTransforms = wheels.ToArray();
         wheelRadii = radii.ToArray();
         wheelBaseRotations = baseRotations.ToArray();
         wheelIsFront = new bool[wheels.Count];
+        wheelCanSteer = new bool[wheels.Count];
         wheelRollAngles = new float[wheels.Count];
         for (int i = 0; i < wheels.Count; i++)
-            wheelIsFront[i] = zLocal[i] > frontThreshold;
+        {
+            float longitudinal = classifyAlongX ? localCenters[i].x : localCenters[i].z;
+            float lateral = classifyAlongX ? localCenters[i].z : localCenters[i].x;
+            wheelIsFront[i] = longitudinal > frontThreshold;
+            // A mesh straddling the midline (combined left+right axle) can't yaw like a
+            // single wheel — steering it would swing both tires as one rigid body.
+            wheelCanSteer[i] = wheelIsFront[i] && Mathf.Abs(lateral) > wheelRadii[i];
+        }
     }
 
     // Wheels stand vertically regardless of which way a given car model happens to face, so a
@@ -763,11 +777,11 @@ public class VehicleSelector : MonoBehaviour
             wheelRollAngles[i] = Mathf.Repeat(wheelRollAngles[i] + degrees, 360f);
 
             // Roll happens in the mesh's own object space (innermost), then the baked
-            // import-correction rotation (e.g. a Z-up->Y-up FBX fixup) re-orients that into
+            // import-correction rotation (e.g. a Z-up→Y-up FBX fixup) re-orients that into
             // the parent's frame, then steer yaws the already-corrected wheel (outermost).
-            // With an identity base rotation this collapses to the original formula exactly.
+            // With an identity base rotation this collapses to roll-only about local X.
             Quaternion roll = wheelBaseRotations[i] * Quaternion.AngleAxis(wheelRollAngles[i], Vector3.right);
-            wheel.localRotation = wheelIsFront[i]
+            wheel.localRotation = wheelCanSteer[i]
                 ? Quaternion.AngleAxis(currentSteerAngle, Vector3.up) * roll
                 : roll;
         }

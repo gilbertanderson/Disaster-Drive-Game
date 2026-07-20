@@ -102,8 +102,8 @@ public class GameplayCameraDirector : MonoBehaviour
             return;
 
         currentView = mode;
-        CacheRearPose();
-        CacheIsoPose();
+        // Use Awake-cached poses only. Re-reading rear/iso anchors here is unsafe:
+        // those transforms live under IntroCameraRig, which recenters during intro.
 
         Vector3 targetPos;
         Quaternion targetRot;
@@ -130,9 +130,8 @@ public class GameplayCameraDirector : MonoBehaviour
 
     public void StartIntroSequence(IReadOnlyList<Transform> vehicleRoots)
     {
-        CacheGameplayPose();
-        CacheRearPose();
-        CacheIsoPose();
+        // Keep Awake-cached gameplay/rear/iso poses. Recaching from the live camera
+        // here used to overwrite the top-down pose when a rear/iso view was already active.
 
         if (cameraShake != null)
             cameraShake.StopAndReset();

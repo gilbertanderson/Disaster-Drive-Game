@@ -35,19 +35,20 @@ public class GameManager : MonoBehaviour
     private const float VehicleNameTextTwoPlayerX = -250f;
     private const float VehicleNameTextTwoPlayerWidth = 500f;
 
-    // P1's vehicle slides outward in 2P so the pair frames the start-screen shot;
-    // P2's spot is scene-authored (z -3.5) since it only exists in 2P. In 1P, P1
-    // returns to its scene-authored preview position.
     // Lateral (world Z) start slots. Screen-right is world −Z with the top-down
     // camera, so these are centered on the camera/road line at Z = 2.5.
     private const float Player1VehicleSinglePlayerZ = 2.5f;
-    private const float Player1VehicleTwoPlayerZ = 8.5f;
+    // Fallback 2P lateral slots when UI→world projection is unavailable (edit-mode
+    // tests, missing camera). Tuned to sit under the P1/P2 picker clusters at the
+    // reference Game view aspect; live 2P prefers ProjectUiCenterToGround.
+    private const float Player1VehicleTwoPlayerZFallback = 6.85f;
+    private const float Player2VehicleTwoPlayerZFallback = -1.85f;
 
-    // Forward (world X) start slot, single-player only. Screen-up is world +X
-    // with the top-down camera, so this controls how far below the Drive
-    // button the vehicle sits on the start screen. Two-player mode keeps the
-    // scene-authored X (its side-by-side P1/P2 layout is unrelated to this).
-    private const float Player1VehicleSinglePlayerX = -18f;
+    // Forward (world X) start-screen slot. Screen-up is world +X with the
+    // top-down camera, so this sits the cars below the Drive / picker row.
+    // Must stay on-screen: the player root is the align target for
+    // VehicleSelector.AlignVisualToOrigin.
+    private const float PlayerStartScreenX = -6f;
 
     [Header("Timer")]
     [SerializeField] private float startTime = 60f;   // Seconds on the clock at the start of a run
@@ -62,6 +63,9 @@ public class GameManager : MonoBehaviour
     [SerializeField] private RectTransform prevVehicleButtonRect; // P1 picker left arrow; repositioned per player count
     [SerializeField] private RectTransform nextVehicleButtonRect; // P1 picker right arrow; repositioned per player count
     [SerializeField] private RectTransform vehicleNameTextRect;   // P1 vehicle name label; repositioned per player count
+    [SerializeField] private RectTransform p2PrevVehicleButtonRect; // P2 picker left arrow (under P2 Drive cluster)
+    [SerializeField] private RectTransform p2NextVehicleButtonRect; // P2 picker right arrow
+    [SerializeField] private RectTransform p2VehicleNameTextRect;   // P2 vehicle name; used to center P2 under its cluster
     [SerializeField] private TMP_Text timer2Text;                // P2 clock in the HUD (2P only)
     [SerializeField] private TMP_Text playerCountButtonLabel;    // "1 Player" / "2 Players" toggle button label
     [SerializeField] private float vehicleCollisionCooldown = 1f; // One penalty per bump, not per contact pair
@@ -636,7 +640,7 @@ public class GameManager : MonoBehaviour
     }
 
     // Wired to the pause overlay's runtime-built VIEW button (see
-    // EnsureRuntimeUiRefs). Cycles Normal -> Rear -> Isometric -> Normal.
+    // EnsureRuntimeUiRefs). Toggles Normal <-> Rear.
     // The label refresh arrives via the RearViewPreferenceChanged event.
     public void ToggleRearView()
     {
@@ -691,14 +695,7 @@ public class GameManager : MonoBehaviour
 
         var p1 = GetPlayer(0);
         var p2 = GetPlayer(1);
-        if (p1 != null)
-        {
-            Vector3 vehiclePos = p1.transform.position;
-            vehiclePos.z = twoPlayer ? Player1VehicleTwoPlayerZ : Player1VehicleSinglePlayerZ;
-            if (!twoPlayer)
-                vehiclePos.x = Player1VehicleSinglePlayerX;
-            p1.transform.position = vehiclePos;
-        }
+        PositionStartScreenVehicles(twoPlayer, p1, p2);
         if (p1 != null)
             p1.ApplyControlScheme(twoPlayer
                 ? PlayerController.ControlScheme.WasdAndLeftStick
@@ -726,6 +723,118 @@ public class GameManager : MonoBehaviour
         RefreshVehiclePickerLabels();
         EnsureIdentityMarkers();
         uiStyler?.Refresh();
+    }
+
+    // Parks each start-screen vehicle under its picker / Drive cluster.
+    // 1P: centered on the road line under the single Drive button.
+    // 2P: lateral world-Z projected from each player's name label (fallback: arrow midpoint).
+    void PositionStartScreenVehicles(bool twoPlayer, PlayerController p1, PlayerController p2)
+    {
+        ResolveP2PickerRectsIfNeeded();
+        Canvas.ForceUpdateCanvases();
+
+        if (p1 != null)
+        {
+            Vector3 pos = p1.transform.position;
+            pos.x = PlayerStartScreenX;
+            if (!twoPlayer)
+            {
+                pos.z = Player1VehicleSinglePlayerZ;
+            }
+            else if (TryGetPickerClusterGroundZ(vehicleNameTextRect, prevVehicleButtonRect, nextVehicleButtonRect, out float p1Z))
+            {
+                pos.z = p1Z;
+            }
+            else
+            {
+                pos.z = Player1VehicleTwoPlayerZFallback;
+            }
+            p1.transform.position = pos;
+        }
+
+        if (p2 != null && twoPlayer)
+        {
+            Vector3 pos = p2.transform.position;
+            pos.x = PlayerStartScreenX;
+            if (TryGetPickerClusterGroundZ(p2VehicleNameTextRect, p2PrevVehicleButtonRect, p2NextVehicleButtonRect, out float p2Z))
+                pos.z = p2Z;
+            else
+                pos.z = Player2VehicleTwoPlayerZFallback;
+            p2.transform.position = pos;
+        }
+    }
+
+    void ResolveP2PickerRectsIfNeeded()
+    {
+        if (p2VehicleNameTextRect == null)
+            p2VehicleNameTextRect = FindSceneRectTransform("P2VehicleNameText");
+        if (p2PrevVehicleButtonRect == null)
+            p2PrevVehicleButtonRect = FindSceneRectTransform("P2PrevVehicleButton");
+        if (p2NextVehicleButtonRect == null)
+            p2NextVehicleButtonRect = FindSceneRectTransform("P2NextVehicleButton");
+    }
+
+    static RectTransform FindSceneRectTransform(string objectName)
+    {
+        foreach (var rt in Resources.FindObjectsOfTypeAll<RectTransform>())
+        {
+            if (rt != null && rt.name == objectName && rt.gameObject.scene.IsValid())
+                return rt;
+        }
+        return null;
+    }
+
+    // Projects a UI cluster's horizontal center onto the y=0 ground plane and returns world Z.
+    bool TryGetPickerClusterGroundZ(RectTransform nameRect, RectTransform prevArrow, RectTransform nextArrow, out float groundZ)
+    {
+        groundZ = 0f;
+        if (TryProjectUiToGround(nameRect, out Vector3 nameGround))
+        {
+            groundZ = nameGround.z;
+            return true;
+        }
+
+        if (prevArrow != null && nextArrow != null
+            && TryProjectUiToGround(prevArrow, out Vector3 prevGround)
+            && TryProjectUiToGround(nextArrow, out Vector3 nextGround))
+        {
+            groundZ = (prevGround.z + nextGround.z) * 0.5f;
+            return true;
+        }
+
+        return false;
+    }
+
+    static bool TryProjectUiToGround(RectTransform rt, out Vector3 groundPoint)
+    {
+        groundPoint = default;
+        if (rt == null)
+            return false;
+
+        Camera cam = Camera.main;
+        if (cam == null)
+            return false;
+
+        var corners = new Vector3[4];
+        rt.GetWorldCorners(corners);
+        Vector3 uiCenter = (corners[0] + corners[2]) * 0.5f;
+
+        Canvas canvas = rt.GetComponentInParent<Canvas>();
+        Camera uiCam = null;
+        if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay)
+            uiCam = canvas.worldCamera != null ? canvas.worldCamera : cam;
+
+        Vector2 screen = RectTransformUtility.WorldToScreenPoint(uiCam, uiCenter);
+        Ray ray = cam.ScreenPointToRay(screen);
+        if (Mathf.Abs(ray.direction.y) < 0.0001f)
+            return false;
+
+        float t = -ray.origin.y / ray.direction.y;
+        if (t < 0f)
+            return false;
+
+        groundPoint = ray.origin + ray.direction * t;
+        return true;
     }
 
     // Splits the P1/P2 timers apart (and moves their penalty popups with them) so they never

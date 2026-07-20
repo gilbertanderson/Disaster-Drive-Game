@@ -55,17 +55,26 @@ public class RearViewManagerTests
     }
 
     [Test]
-    public void CycleView_WrapsThroughAllThreeModes()
+    public void CycleView_TogglesNormalAndRearOnly()
     {
         Assert.That(RearViewManager.CurrentMode, Is.EqualTo(RearViewManager.ViewMode.Normal));
 
         RearViewManager.CycleView();
         Assert.That(RearViewManager.CurrentMode, Is.EqualTo(RearViewManager.ViewMode.RearChase));
-
-        RearViewManager.CycleView();
-        Assert.That(RearViewManager.CurrentMode, Is.EqualTo(RearViewManager.ViewMode.Isometric));
+        Assert.That(RearViewManager.ButtonLabel, Is.EqualTo("VIEW: REAR"));
 
         RearViewManager.CycleView();
         Assert.That(RearViewManager.CurrentMode, Is.EqualTo(RearViewManager.ViewMode.Normal));
+        Assert.That(RearViewManager.ButtonLabel, Is.EqualTo("VIEW: NORMAL"));
+    }
+
+    [Test]
+    public void CurrentMode_MigratesLegacyIsometricPrefToNormal()
+    {
+        PlayerPrefs.SetInt(RearViewManager.RearViewPrefKey, (int)RearViewManager.ViewMode.Isometric);
+        TestReflectionHelpers.SetPrivateStaticField(typeof(RearViewManager), "viewModePref", int.MinValue);
+
+        Assert.That(RearViewManager.CurrentMode, Is.EqualTo(RearViewManager.ViewMode.Normal));
+        Assert.That(RearViewManager.ButtonLabel, Is.EqualTo("VIEW: NORMAL"));
     }
 }

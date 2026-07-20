@@ -1,20 +1,21 @@
 using System;
 using UnityEngine;
 
-// Owns the player's preferred in-run camera view — normal top-down follow,
-// a low rear-chase pose, or an elevated rear isometric pose — applied via
-// GameplayCameraDirector.ApplyViewMode and persisted across sessions. Cycled
-// by the pause menu's VIEW button (see GameManager.CycleView).
+// Owns the player's preferred in-run camera view — normal top-down follow or a
+// low rear-chase pose — applied via GameplayCameraDirector.ApplyViewMode and
+// persisted across sessions. Toggled by the pause menu's VIEW button.
 public static class RearViewManager
 {
     public enum ViewMode
     {
         Normal = 0,
         RearChase = 1,
+        // Retained for PlayerPrefs compatibility; never offered in the pause UI.
+        // Stored ISO values are migrated to Normal on load.
         Isometric = 2,
     }
 
-    private const int ModeCount = 3;
+    private const int SelectableModeCount = 2;
 
     // Key name kept from the original on/off toggle for save compatibility.
     public const string RearViewPrefKey = "RearViewEnabled";
@@ -33,7 +34,10 @@ public static class RearViewManager
             if (viewModePref == PrefUnloaded)
             {
                 int stored = PlayerPrefs.GetInt(RearViewPrefKey, (int)ViewMode.Normal);
-                viewModePref = Mathf.Clamp(stored, 0, ModeCount - 1);
+                // ISO was removed from the pause VIEW cycle; treat legacy saves as Normal.
+                if (stored == (int)ViewMode.Isometric)
+                    stored = (int)ViewMode.Normal;
+                viewModePref = Mathf.Clamp(stored, 0, SelectableModeCount - 1);
             }
             return (ViewMode)viewModePref;
         }
@@ -42,20 +46,17 @@ public static class RearViewManager
     // Back-compat: true whenever a non-normal view is active.
     public static bool RearViewEnabled => CurrentMode != ViewMode.Normal;
 
-    public static string ButtonLabel => CurrentMode switch
-    {
-        ViewMode.RearChase => "VIEW: REAR",
-        ViewMode.Isometric => "VIEW: ISO",
-        _ => "VIEW: NORMAL",
-    };
+    public static string ButtonLabel => CurrentMode == ViewMode.RearChase
+        ? "VIEW: REAR"
+        : "VIEW: NORMAL";
 
+    // Pause VIEW button: Normal <-> Rear only.
     public static void CycleView()
     {
-        SetMode((ViewMode)(((int)CurrentMode + 1) % ModeCount));
+        TogglePreference();
     }
 
-    // Back-compat entry point for callers/tests expecting a simple on/off
-    // toggle: flips between Normal and RearChase only.
+    // Flips between Normal and RearChase.
     public static void TogglePreference()
     {
         SetMode(CurrentMode == ViewMode.Normal ? ViewMode.RearChase : ViewMode.Normal);
@@ -63,6 +64,9 @@ public static class RearViewManager
 
     private static void SetMode(ViewMode mode)
     {
+        if (mode == ViewMode.Isometric)
+            mode = ViewMode.Normal;
+
         viewModePref = (int)mode;
         PlayerPrefs.SetInt(RearViewPrefKey, viewModePref);
         PlayerPrefs.Save();
