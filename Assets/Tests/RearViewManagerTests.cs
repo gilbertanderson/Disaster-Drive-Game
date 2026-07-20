@@ -36,7 +36,7 @@ public class RearViewManagerTests
     {
         Assert.That(RearViewManager.CurrentMode, Is.EqualTo(RearViewManager.ViewMode.Normal));
         Assert.That(RearViewManager.RearViewEnabled, Is.False);
-        Assert.That(RearViewManager.ButtonLabel, Is.EqualTo("VIEW: NORMAL"));
+        Assert.That(RearViewManager.ButtonLabel, Is.EqualTo("VIEW: TOP"));
     }
 
     [Test]
@@ -65,7 +65,7 @@ public class RearViewManagerTests
 
         RearViewManager.CycleView();
         Assert.That(RearViewManager.CurrentMode, Is.EqualTo(RearViewManager.ViewMode.Normal));
-        Assert.That(RearViewManager.ButtonLabel, Is.EqualTo("VIEW: NORMAL"));
+        Assert.That(RearViewManager.ButtonLabel, Is.EqualTo("VIEW: TOP"));
     }
 
     [Test]
@@ -75,6 +75,6 @@ public class RearViewManagerTests
         TestReflectionHelpers.SetPrivateStaticField(typeof(RearViewManager), "viewModePref", int.MinValue);
 
         Assert.That(RearViewManager.CurrentMode, Is.EqualTo(RearViewManager.ViewMode.Normal));
-        Assert.That(RearViewManager.ButtonLabel, Is.EqualTo("VIEW: NORMAL"));
+        Assert.That(RearViewManager.ButtonLabel, Is.EqualTo("VIEW: TOP"));
     }
 }
