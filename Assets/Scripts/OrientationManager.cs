@@ -35,7 +35,7 @@ public static class OrientationManager
     }
 
     public static string ButtonLabel =>
-        LandscapePreferred ? "ROTATION: LANDSCAPE" : "ROTATION: PORTRAIT";
+        LandscapePreferred ? "ORIENTATION: LANDSCAPE" : "ORIENTATION: PORTRAIT";
 
     public static void TogglePreference()
     {

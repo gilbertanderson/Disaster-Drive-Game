@@ -1,7 +1,7 @@
 using NUnit.Framework;
 using UnityEngine;
 
-// Covers the preferred-orientation preference behind the pause menu's ROTATION
+// Covers the preferred-orientation preference behind the pause menu's ORIENTATION
 // toggle (see OrientationManager): landscape by default, an explicit choice is
 // persisted, and the change event lets the pause menu re-render its label.
 // The platform-specific side of Apply() compiles away in the Editor, so these
@@ -45,7 +45,7 @@ public class OrientationPreferenceTests
     {
         Assert.That(OrientationManager.LandscapePreferred, Is.True,
             "With no saved choice, the game should prefer landscape.");
-        Assert.That(OrientationManager.ButtonLabel, Is.EqualTo("ROTATION: LANDSCAPE"));
+        Assert.That(OrientationManager.ButtonLabel, Is.EqualTo("ORIENTATION: LANDSCAPE"));
     }
 
     [Test]
@@ -55,7 +55,7 @@ public class OrientationPreferenceTests
 
         Assert.That(OrientationManager.LandscapePreferred, Is.False,
             "Toggling from the landscape default should prefer portrait.");
-        Assert.That(OrientationManager.ButtonLabel, Is.EqualTo("ROTATION: PORTRAIT"));
+        Assert.That(OrientationManager.ButtonLabel, Is.EqualTo("ORIENTATION: PORTRAIT"));
         Assert.That(PlayerPrefs.GetInt(OrientationManager.OrientationPrefKey, -1), Is.EqualTo(0),
             "The portrait choice should be written to PlayerPrefs.");
     }

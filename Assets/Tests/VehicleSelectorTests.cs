@@ -284,6 +284,42 @@ public class VehicleSelectorTests
     }
 
     [Test]
+    public void CacheWheels_ClassifiesFrontByBoundsCenterWhenLocalPositionsMatch()
+    {
+        // Mimics FBX packs that leave every sub-mesh at the same localPosition and bake the
+        // real front/rear offset into vertex data. Classification must use bounds.center, and
+        // must pick the horizontal axis with the larger spread (X here, Z is identical).
+        var front = CreateWheelChildWithVertexOffset(vehicleVisual, "Wheel_Front", Vector3.zero, new Vector3(2f, 0f, 0f));
+        var rear = CreateWheelChildWithVertexOffset(vehicleVisual, "Wheel_Back", Vector3.zero, new Vector3(-2f, 0f, 0f));
+
+        InvokePrivateMethod("CacheWheels");
+
+        var wheels = GetPrivateField<Transform[]>(selector, "wheelTransforms");
+        var isFront = GetPrivateField<bool[]>(selector, "wheelIsFront");
+        var canSteer = GetPrivateField<bool[]>(selector, "wheelCanSteer");
+
+        Assert.That(wheels.Length, Is.EqualTo(2));
+        for (int i = 0; i < wheels.Length; i++)
+        {
+            if (wheels[i] == front.transform)
+            {
+                Assert.That(isFront[i], Is.True, "Bounds-centered +X wheel should classify as front.");
+                // Combined-style meshes that sit on the midline (lateral ≈ 0) are not steerable.
+                Assert.That(canSteer[i], Is.False);
+            }
+            else if (wheels[i] == rear.transform)
+            {
+                Assert.That(isFront[i], Is.False, "Bounds-centered -X wheel should classify as rear.");
+                Assert.That(canSteer[i], Is.False);
+            }
+            else
+            {
+                Assert.Fail($"Unexpected wheel '{wheels[i].name}'.");
+            }
+        }
+    }
+
+    [Test]
     public void WheelSpinDegreesPerSecond_ScalesWithSpeedAndInverselyWithRadius()
     {
         Assert.That(VehicleSelector.WheelSpinDegreesPerSecond(0f, 0.5f), Is.EqualTo(0f));
@@ -425,6 +461,24 @@ public class VehicleSelectorTests
         wheel.name = name;
         wheel.transform.parent = parent.transform;
         wheel.transform.localPosition = localPosition;
+        return wheel;
+    }
+
+    // Same localPosition as a sibling, but mesh vertices (and thus Renderer.bounds.center)
+    // are shifted so front/rear classification must read geometry rather than the transform.
+    private static GameObject CreateWheelChildWithVertexOffset(
+        GameObject parent, string name, Vector3 localPosition, Vector3 vertexOffset)
+    {
+        var wheel = CreateWheelChild(parent, name, localPosition);
+        var filter = wheel.GetComponent<MeshFilter>();
+        var source = filter.sharedMesh;
+        var mesh = Object.Instantiate(source);
+        var vertices = mesh.vertices;
+        for (int i = 0; i < vertices.Length; i++)
+            vertices[i] += vertexOffset;
+        mesh.vertices = vertices;
+        mesh.RecalculateBounds();
+        filter.sharedMesh = mesh;
         return wheel;
     }
 

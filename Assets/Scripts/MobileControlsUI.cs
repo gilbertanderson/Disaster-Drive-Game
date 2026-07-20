@@ -70,8 +70,8 @@ public class MobileControlsUI : MonoBehaviour
     private CanvasGroup stickCanvasGroupP2;
     private GameObject hintRoot;
     private TextMeshProUGUI hintLabel;
-    private OnScreenStick onScreenStick;
-    private OnScreenStick onScreenStickP2;
+    private DisasterOnScreenStick onScreenStick;
+    private DisasterOnScreenStick onScreenStickP2;
     private readonly HashSet<InputDevice> ignoredStickDevices = new HashSet<InputDevice>();
     private Canvas controlsCanvas;
     private Rect lastSafeArea = new Rect(-1f, -1f, -1f, -1f);
@@ -140,7 +140,7 @@ public class MobileControlsUI : MonoBehaviour
         RefreshHint();
     }
 
-    private void TryIgnoreStickDevice(OnScreenStick stick)
+    private void TryIgnoreStickDevice(DisasterOnScreenStick stick)
     {
         if (stick == null || stick.control == null)
             return;
@@ -273,10 +273,10 @@ public class MobileControlsUI : MonoBehaviour
     }
 
     private static GameObject BuildStick(Transform parent, string name, Sprite circle,
-        Vector2 anchor, Vector2 anchoredPosition, string controlPath, out OnScreenStick stick,
+        Vector2 anchor, Vector2 anchoredPosition, string controlPath, out DisasterOnScreenStick stick,
         out CanvasGroup canvasGroup)
     {
-        var root = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(OnScreenStick), typeof(CanvasGroup));
+        var root = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(DisasterOnScreenStick), typeof(CanvasGroup));
         var areaRect = (RectTransform)root.transform;
         areaRect.SetParent(parent, false);
         areaRect.anchorMin = areaRect.anchorMax = anchor;
@@ -288,12 +288,13 @@ public class MobileControlsUI : MonoBehaviour
         areaImage.color = new Color(1f, 1f, 1f, 0.18f);
         areaImage.raycastTarget = true;
 
-        stick = root.GetComponent<OnScreenStick>();
+        // The ring (this object) is the hit-test area so a touch anywhere on
+        // the 340px pad starts a drag, but only the handle child below
+        // actually slides — see DisasterOnScreenStick for why a plain
+        // OnScreenStick can't do this (it always moves its own RectTransform).
+        stick = root.GetComponent<DisasterOnScreenStick>();
         stick.controlPath = controlPath;
         stick.movementRange = StickMovementRange;
-        // Isolated pointer actions prevent a virtual gamepad device change
-        // from cancelling an in-progress touch (common on iOS Simulator).
-        stick.useIsolatedInputActions = true;
 
         canvasGroup = root.GetComponent<CanvasGroup>();
         canvasGroup.alpha = 0f;
@@ -308,6 +309,8 @@ public class MobileControlsUI : MonoBehaviour
         handleImage.sprite = circle;
         handleImage.color = new Color(1f, 1f, 1f, 0.55f);
         handleImage.raycastTarget = false;
+
+        stick.handle = handleRect;
 
         return root;
     }

@@ -10,7 +10,15 @@ import sys
 from pathlib import Path
 
 SKIP_PREFIXES = ("http://", "https://", "mailto:", "#")
-SKIP_DIRS = ("Packages/", "Library/", "node_modules/")
+SKIP_DIRS = (
+    "Packages/",
+    "Library/",
+    "node_modules/",
+    # Vendored third-party SDK folders under Assets — their docs ship with
+    # broken relative links we don't control.
+    "Assets/LevelPlay/",
+    "Assets/MobileDependencyResolver/",
+)
 
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 FENCE_RE = re.compile(r"```.*?```", re.DOTALL)
