@@ -602,11 +602,18 @@ public class GameManager : MonoBehaviour
         Time.timeScale = IsPaused ? 0f : 1f;
         if (pausePanel != null)
         {
+            // Re-apply inset before UIPanelTransition.Show captures basePos.
+            if (IsPaused)
+                ApplyPauseOverlayClearance();
             if (pausePanelRoutine != null)
                 StopCoroutine(pausePanelRoutine);
             pausePanelRoutine = StartCoroutine(
                 IsPaused ? UIPanelTransition.Show(pausePanel) : UIPanelTransition.Hide(pausePanel));
         }
+        // #region agent log
+        if (IsPaused)
+            AgentLogPauseTimerClearance("TogglePause");
+        // #endregion
     }
 
     // Wired to the pause overlay's music button.
@@ -905,12 +912,8 @@ public class GameManager : MonoBehaviour
             eliminationBannerText.raycastTarget = false;
         }
 
-        // Orientation toggle for the pause menu: cloned from the music button
-        // so it inherits the sprite, font, colors, and UIButtonFeedback
-        // without touching the scene. Continues the pause menu's 100px button
-        // pitch (Resume 80, Retry -20, Music -120) — compressed from the
-        // original 120px pitch so all 6 buttons fit within the panel's
-        // +/-540 vertical bounds instead of running off the bottom edge.
+        // Orientation / touch / rear toggles: cloned from the music button into
+        // a lowered 2×3 grid so the dimmed pause panel clears the timer band.
         if (rotationButtonLabel == null && musicButtonLabel != null)
         {
             var musicButton = musicButtonLabel.GetComponentInParent<Button>(true);
@@ -918,9 +921,6 @@ public class GameManager : MonoBehaviour
             {
                 GameObject go = Instantiate(musicButton.gameObject, musicButton.transform.parent);
                 go.name = "OrientationButtonRuntime";
-                var rt = go.GetComponent<RectTransform>();
-                if (rt != null)
-                    rt.anchoredPosition = new Vector2(0f, -220f);
                 var button = go.GetComponent<Button>();
                 // Instantiate copies the scene-wired persistent ToggleMusic
                 // call, which RemoveAllListeners cannot clear — swap the whole
@@ -932,9 +932,6 @@ public class GameManager : MonoBehaviour
             }
         }
 
-        // Touch-controls toggle for the pause menu, cloned the same way as
-        // the orientation button above so it matches the panel's styling and
-        // spacing (next slot on the 100px pitch after Orientation at -220).
         if (touchControlsButtonLabel == null && musicButtonLabel != null)
         {
             var musicButton = musicButtonLabel.GetComponentInParent<Button>(true);
@@ -942,9 +939,6 @@ public class GameManager : MonoBehaviour
             {
                 GameObject go = Instantiate(musicButton.gameObject, musicButton.transform.parent);
                 go.name = "TouchControlsButtonRuntime";
-                var rt = go.GetComponent<RectTransform>();
-                if (rt != null)
-                    rt.anchoredPosition = new Vector2(0f, -320f);
                 var button = go.GetComponent<Button>();
                 button.onClick = new Button.ButtonClickedEvent();
                 button.onClick.AddListener(ToggleTouchControls);
@@ -953,8 +947,6 @@ public class GameManager : MonoBehaviour
             }
         }
 
-        // Rear-view camera toggle for the pause menu (next slot after touch
-        // controls at -320).
         if (rearViewButtonLabel == null && musicButtonLabel != null)
         {
             var musicButton = musicButtonLabel.GetComponentInParent<Button>(true);
@@ -962,9 +954,6 @@ public class GameManager : MonoBehaviour
             {
                 GameObject go = Instantiate(musicButton.gameObject, musicButton.transform.parent);
                 go.name = "RearViewButtonRuntime";
-                var rt = go.GetComponent<RectTransform>();
-                if (rt != null)
-                    rt.anchoredPosition = new Vector2(0f, -420f);
                 var button = go.GetComponent<Button>();
                 button.onClick = new Button.ButtonClickedEvent();
                 button.onClick.AddListener(ToggleRearView);
@@ -973,11 +962,109 @@ public class GameManager : MonoBehaviour
             }
         }
 
+        LayoutPauseMenuButtons();
+        ApplyPauseOverlayClearance();
+
+        // #region agent log
+        AgentLogPauseTimerClearance("EnsureRuntimeUiRefs");
+        // #endregion
+
         // Tap-to-pause on the timer HUD. Attached after the clone blocks above
         // so the countdown/banner copies of the timer don't inherit the handler.
         AttachTimerPauseTapHandler(timerText);
         AttachTimerPauseTapHandler(timer2Text);
     }
+
+    // Inset the dimmed pause panel below the timer band, lower PAUSED text, and
+    // draw timer HUD above the overlay. Applied in code so it does not depend on
+    // the Editor having reloaded the scene YAML.
+    void ApplyPauseOverlayClearance()
+    {
+        if (pausePanel != null)
+        {
+            var panelRt = pausePanel.GetComponent<RectTransform>();
+            if (panelRt != null)
+            {
+                panelRt.anchorMin = Vector2.zero;
+                panelRt.anchorMax = Vector2.one;
+                panelRt.pivot = new Vector2(0.5f, 0.5f);
+                panelRt.anchoredPosition = new Vector2(0f, -70f);
+                panelRt.sizeDelta = new Vector2(0f, -140f);
+            }
+
+            var paused = pausePanel.transform.Find("PausedText") as RectTransform;
+            if (paused != null)
+                paused.anchoredPosition = new Vector2(0f, 200f);
+        }
+
+        // Later siblings draw on top: keep timers/stats above the dim overlay.
+        if (pausePanel != null)
+        {
+            if (timerText != null)
+                timerText.transform.SetAsLastSibling();
+            if (timer2Text != null)
+                timer2Text.transform.SetAsLastSibling();
+            if (runStatsText != null)
+                runStatsText.transform.SetAsLastSibling();
+        }
+    }
+
+    // Lowered 2×3 grid under the timer band (panel itself is inset 140px from
+    // the top). Column centers ±200; row pitch 140.
+    void LayoutPauseMenuButtons()
+    {
+        const float col = 200f;
+        const float rowPitch = 140f;
+        const float topY = 80f;
+        SetPauseButtonPos("ResumeButton", -col, topY);
+        SetPauseButtonPos("RetryButton", col, topY);
+        SetPauseButtonPos("MusicButton", -col, topY - rowPitch);
+        SetPauseButtonPos("TouchControlsButtonRuntime", col, topY - rowPitch);
+        SetPauseButtonPos("OrientationButtonRuntime", -col, topY - rowPitch * 2f);
+        SetPauseButtonPos("RearViewButtonRuntime", col, topY - rowPitch * 2f);
+    }
+
+    void SetPauseButtonPos(string objectName, float x, float y)
+    {
+        if (pausePanel == null)
+            return;
+        var t = pausePanel.transform.Find(objectName);
+        if (t == null)
+            return;
+        var rt = t.GetComponent<RectTransform>();
+        if (rt == null)
+            return;
+        rt.anchoredPosition = new Vector2(x, y);
+    }
+
+    // #region agent log
+    void AgentLogPauseTimerClearance(string location)
+    {
+        try
+        {
+            var panelRt = pausePanel != null ? pausePanel.GetComponent<RectTransform>() : null;
+            var paused = pausePanel != null ? pausePanel.transform.Find("PausedText") as RectTransform : null;
+            string payload =
+                "{\"sessionId\":\"5d13b4\",\"runId\":\"post-fix\",\"hypothesisId\":\"TIMER,VIEW\"," +
+                "\"location\":\"GameManager.cs:" + location + "\"," +
+                "\"message\":\"pause vs timer\"," +
+                "\"data\":{" +
+                "\"panelPosY\":" + (panelRt != null ? panelRt.anchoredPosition.y.ToString("F1") : "null") + "," +
+                "\"panelSizeY\":" + (panelRt != null ? panelRt.sizeDelta.y.ToString("F1") : "null") + "," +
+                "\"pausedTextY\":" + (paused != null ? paused.anchoredPosition.y.ToString("F1") : "null") + "," +
+                "\"timerSibling\":" + (timerText != null ? timerText.transform.GetSiblingIndex().ToString() : "null") + "," +
+                "\"pauseSibling\":" + (pausePanel != null ? pausePanel.transform.GetSiblingIndex().ToString() : "null") + "," +
+                "\"viewLabel\":\"" + RearViewManager.ButtonLabel + "\"" +
+                "},\"timestamp\":" + System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + "}";
+            System.IO.File.AppendAllText(
+                "/Users/gilbertanderson/Development/Create with Code/Unity Learn/My Game - Disaster/.cursor/debug-5d13b4.log",
+                payload + "\n");
+        }
+        catch (System.Exception)
+        {
+        }
+    }
+    // #endregion
 
     void AttachTimerPauseTapHandler(TMP_Text label)
     {

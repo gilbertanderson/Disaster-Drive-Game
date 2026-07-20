@@ -48,7 +48,7 @@ public static class RearViewManager
 
     public static string ButtonLabel => CurrentMode == ViewMode.RearChase
         ? "VIEW: REAR"
-        : "VIEW: NORMAL";
+        : "VIEW: TOP";
 
     // Pause VIEW button: Normal <-> Rear only.
     public static void CycleView()
